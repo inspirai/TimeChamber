@@ -1,0 +1,65 @@
+params:
+  seed: ${...seed}
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: transformer
+    space:
+      continuous:
+
+    transformer:
+      input_split: [1, 3, 3, 1, 1, 1, 1, 1, 21, 21, 21, 12, 21]
+      seq_pool: True
+      embedding_dim: 256
+      num_layers: 3
+      num_heads: 2
+      mlp_ratio: 2.0
+      dropout: 0.0
+      attention_dropout: 0.0
+      stochastic_depth: 0.0
+      positional_embedding: 'none' 
+
+  load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
+  load_path: ${...checkpoint} # path to the checkpoint to load
+
+  config:
+    name: ${resolve_default:Humanoid,${....experiment}}
+    full_experiment_name: ${.name}
+    env_name: rlgpu
+    multi_gpu: False
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: True
+    num_actors: ${....task.env.numEnvs}
+    reward_shaper:
+      scale_value: 0.01
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 3e-4
+    lr_schedule: None #adaptive
+    kl_threshold: 0.008
+    score_to_win: 20000
+    max_epochs: ${resolve_default:1000,${....max_iterations}}
+    save_best_after: 200
+    save_frequency: 100
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.0
+    truncate_grads: True
+    ppo: True
+    e_clip: 0.2
+    horizon_length: 32
+    minibatch_size: 8192
+    mini_epochs: 5
+    critic_coef: 4
+    clip_value: True
+    seq_len: 4
+    bound_loss_type: 'regularisation' #'bound'
+    bounds_loss_coef: 0.0000
