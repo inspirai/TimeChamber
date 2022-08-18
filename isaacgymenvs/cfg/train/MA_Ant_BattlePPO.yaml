@@ -32,6 +32,7 @@ params:
   load_checkpoint: ${if:${...checkpoint},True,False} # flag which sets whether to load the checkpoint
   load_path: ${...checkpoint} # path to the checkpoint to load
   op_load_path: ${if:${...op_checkpoint},${...op_checkpoint},${...checkpoint}} # default play with myself
+  num_agents: ${...num_agents}
   device: ${...rl_device}
   config:
     name: ${resolve_default:MA_Ant_1v1,${....experiment}}
@@ -56,7 +57,7 @@ params:
     score_to_win: 20000
     max_epochs: ${resolve_default:2000,${....max_iterations}}
     save_best_after: 200
-    save_frequency: 50
+    save_frequency: 1000
     grad_norm: 1.0
     entropy_coef: 0.0
     truncate_grads: True

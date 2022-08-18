@@ -138,6 +138,7 @@ def launch_rlg_hydra(cfg: DictConfig):
         runner.player_factory.register_builder('amp_continuous',
                                                lambda **kwargs: amp_players.AMPPlayerContinuous(**kwargs))
         runner.algo_factory.register_builder('self_play_continuous', lambda **kwargs: ppo_sf_agent.SFAgent(**kwargs))
+
         runner.player_factory.register_builder('self_play_continuous',
                                                lambda **kwargs: ppo_sf_player.SFPlayer(**kwargs))
         model_builder.register_model('continuous_amp', lambda network, **kwargs: amp_models.ModelAMPContinuous(network))

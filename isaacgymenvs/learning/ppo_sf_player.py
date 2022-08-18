@@ -67,14 +67,15 @@ class SFPlayer(BasePlayer):
             'normalize_value': self.normalize_value,
             'normalize_input': self.normalize_input,
         }
+        self.policy_timestep = []
+        self.policy_op_timestep = []
         self.params = params
-        self.record_true_skill = True
+        self.record_elo = True
         self.num_actors = params['config']['num_actors']
         self.player_pool_type = params['player_pool_type']
-        self.max_player_num = 64
-        self.op_batch_num = 32
         self.player_pool = None
         self.op_player_pool = None
+        self.num_opponents = params['num_agents'] - 1
         self.games_num = 40000
         self.max_steps = 1000
         self.update_op_num = 0
@@ -84,20 +85,20 @@ class SFPlayer(BasePlayer):
         # assert self.num_actors % self.op_batch_num == 0
 
     def restore(self, load_dir):
-
         if os.path.isdir(load_dir):
             self.player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             print('dir:', load_dir)
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
+                self.policy_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
                 new_player = SinglePlayer(player_idx=policy_check_checkpoint, model=model, device=self.device,
-                                          rating=400)
+                                          rating=400, obs_batch_len=self.num_actors * self.num_opponents)
                 self.player_pool.add_player(new_player)
         else:
             self.player_pool = self._build_player_pool(params=self.params, player_num=1)
             model = self.load_model(load_dir)
             new_player = SinglePlayer(player_idx=0, model=model, device=self.device,
-                                      rating=400)
+                                      rating=400, obs_batch_len=self.num_actors * self.num_opponents)
             self.player_pool.add_player(new_player)
         self._alloc_env_indices()
 
@@ -105,26 +106,33 @@ class SFPlayer(BasePlayer):
         if os.path.isdir(load_dir):
             self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
+                self.policy_op_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
                 new_player = SinglePlayer(player_idx=policy_check_checkpoint, model=model, device=self.device,
-                                          rating=400)
+                                          rating=400, obs_batch_len=self.num_actors * self.num_opponents)
                 self.op_player_pool.add_player(new_player)
         else:
             self.op_player_pool = self._build_player_pool(params=self.params, player_num=1)
             model = self.load_model(load_dir)
             new_player = SinglePlayer(player_idx=0, model=model, device=self.device,
-                                      rating=400)
+                                      rating=400, obs_batch_len=self.num_actors * self.num_opponents)
             self.op_player_pool.add_player(new_player)
 
     def _alloc_env_indices(self):
         for idx in range(self.num_actors):
             player_idx = random.randint(0, len(self.player_pool.players) - 1)
-            op_player_idx = random.randint(0, len(self.op_player_pool.players) - 1)
             self.player_pool.players[player_idx].add_envs(torch.tensor([idx], dtype=torch.long, device=self.device))
-            self.op_player_pool.players[op_player_idx].add_envs(
-                torch.tensor([idx], dtype=torch.long, device=self.device))
-            self.players_per_env.append((self.player_pool.players[player_idx],
-                                         self.op_player_pool.players[op_player_idx]))
+            env_player = [self.player_pool.players[player_idx]]
+            for op_idx in range(self.num_opponents):
+                op_player_idx = random.randint(0, len(self.op_player_pool.players) - 1)
+                self.op_player_pool.players[op_player_idx].add_envs(
+                    torch.tensor([idx + op_idx * self.num_actors], dtype=torch.long, device=self.device))
+                env_player.append(self.op_player_pool.players[op_player_idx])
+            self.players_per_env.append(env_player)
+        for player in self.player_pool.players:
+            player.reset_envs()
+        for player in self.op_player_pool.players:
+            player.reset_envs()
 
     def _build_player_pool(self, params, player_num):
 
@@ -136,16 +144,16 @@ class SFPlayer(BasePlayer):
                                       device=self.device)
         elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
-            vector_model_config['num_envs'] = self.num_actors
+            vector_model_config['num_envs'] = self.num_actors * self.num_opponents
             vector_model_config['population_size'] = player_num
 
             return SFPlayerVectorizedPool(max_length=player_num, device=self.device,
                                           vector_model_config=vector_model_config, params=params)
         else:
-            return SFPlayerPool(max_length=self.max_player_num, device=self.device)
+            return SFPlayerPool(max_length=player_num, device=self.device)
 
-    def _update_rating(self, info):
-        for env_idx in range(self.num_actors):
+    def _update_rating(self, info, enc_indices):
+        for env_idx in enc_indices:
             player = self.players_per_env[env_idx][0]
             op_player = self.players_per_env[env_idx][1]
             if info['win'][env_idx]:
@@ -199,8 +207,6 @@ class SFPlayer(BasePlayer):
                     action = self.get_action(obses['obs'], is_determenistic)
                     action_op = self.get_action(obses['obs_op'], is_determenistic, is_op=True)
                 obses, r, done, info = self.env_step(self.env, torch.cat((action, action_op), dim=0))
-                if self.record_true_skill:
-                    self._update_rating(info)
                 cr += r
                 steps += 1
 
@@ -212,7 +218,8 @@ class SFPlayer(BasePlayer):
                 done_indices = all_done_indices[::self.num_agents]
                 done_count = len(done_indices)
                 games_played += done_count
-
+                if self.record_elo:
+                    self._update_rating(info, all_done_indices.flatten())
                 if done_count > 0:
                     if self.is_rnn:
                         for s in self.states:
@@ -245,10 +252,10 @@ class SFPlayer(BasePlayer):
                     sum_game_res += game_res
                     if batch_size // self.num_agents == 1 or games_played >= n_games:
                         break
-        print("winrate:",
-              self.env.win_count / (self.env.win_count + self.env.lose_count + self.env.draw_count),
-              "draw:",
-              self.env.draw_count / (self.env.win_count + self.env.lose_count + self.env.draw_count))
+        # print("winrate:",
+        #       self.env.win_count / (self.env.win_count + self.env.lose_count + self.env.draw_count),
+        #       "draw:",
+        #       self.env.draw_count / (self.env.win_count + self.env.lose_count + self.env.draw_count))
 
         # print(sum_rewards)
         # if print_game_res:
@@ -257,13 +264,23 @@ class SFPlayer(BasePlayer):
         # else:
         #     print('av reward:', sum_rewards / games_played * n_game_life,
         #           'av steps:', sum_steps / games_played * n_game_life)
-        if self.record_true_skill:
+        if self.record_elo:
             self._plot_elo_curve()
 
     def _plot_elo_curve(self):
-        x = np.arange(len(self.player_pool.players))
+        self.policy_op_timestep.sort()
+        self.policy_timestep.sort()
+        for idx in range(1, len(self.policy_op_timestep)):
+            self.policy_op_timestep[idx] -= self.policy_op_timestep[0]
+            self.policy_op_timestep[idx] /= 3600 * 24
+            print(self.policy_op_timestep[idx])
+        for idx in range(1, len(self.policy_timestep)):
+            self.policy_timestep[idx] -= self.policy_timestep[0]
+            self.policy_timestep[idx] /= 3600 * 24
+        self.policy_timestep[0] = self.policy_op_timestep[0] = 0
+        x = np.array(self.policy_timestep)
         y = np.arange(len(self.player_pool.players))
-        x_op = np.arange(len(self.op_player_pool.players))
+        x_op = np.array(self.policy_op_timestep)
         y_op = np.arange(len(self.op_player_pool.players))
         for player in self.player_pool.players:
             idx = int(player.player_idx.split('_', 1)[1].split('.', 1)[0]) - 1
@@ -277,10 +294,10 @@ class SFPlayer(BasePlayer):
         l2 = plt.plot(x_op, y_op, 'r--', label='policy_op')
         plt.plot(x, y, 'b^-', x_op, y_op, 'ro-')
         plt.title('ELO Curve')
-        plt.xlabel('policy')
+        plt.xlabel('timestep/days')
         plt.ylabel('ElO')
         plt.legend()
-        plt.show()
+        plt.savefig('./elo.jpg')
 
     def get_action(self, obs, is_determenistic=False, is_op=False):
         if self.has_batch_dimension == False:
@@ -293,10 +310,11 @@ class SFPlayer(BasePlayer):
             'rnn_states': self.states
         }
         with torch.no_grad():
+            data_len = self.num_actors * self.num_opponents if is_op else self.num_actors
             res_dict = {
-                "actions": torch.zeros((self.num_actors, self.actions_num), device=self.device),
-                "values": torch.zeros((self.num_actors, 1), device=self.device),
-                "mus": torch.zeros((self.num_actors, self.actions_num), device=self.device)
+                "actions": torch.zeros((data_len, self.actions_num), device=self.device),
+                "values": torch.zeros((data_len, 1), device=self.device),
+                "mus": torch.zeros((data_len, self.actions_num), device=self.device)
             }
             if is_op:
                 self.op_player_pool.inference(input_dict, res_dict, obs)
@@ -319,10 +337,14 @@ class SFPlayer(BasePlayer):
 
     def env_reset(self, env):
         obs = env.reset()
+        obs['obs_op'] = obs['obs'][self.num_actors:]
+        obs['obs'] = obs['obs'][:self.num_actors]
         return obs
 
     def env_step(self, env, actions):
         obs, rewards, dones, infos = env.step(actions)
+        obs['obs_op'] = obs['obs'][self.num_actors:]
+        obs['obs'] = obs['obs'][:self.num_actors]
         if hasattr(obs, 'dtype') and obs.dtype == np.float64:
             obs = np.float32(obs)
         if self.value_size > 1:

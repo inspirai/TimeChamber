@@ -69,7 +69,7 @@ class MA_Ant_1v1(MA_VecTask):
         self.stay_in_center_reward_scale = 0.2
         self.action_cost_scale = -0.000025
         self.push_scale = 1.
-        self.dense_reward_scale = 1.0
+        self.dense_reward_scale = 1.
         self.win_count = 0
         self.lose_count = 0
         self.draw_count = 0
@@ -83,14 +83,12 @@ class MA_Ant_1v1(MA_VecTask):
         self.cfg["env"][
             "numObservations"] = 40
         self.cfg["env"]["numActions"] = 8
-        self.cfg["env"]["numAgents"] = 1
+        self.cfg["env"]["numAgents"] = 2
         self.use_central_value = False
 
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
                          headless=headless)
-
-        self.obs_idxs = torch.eye(4, dtype=torch.float32, device=self.device)
 
         if self.viewer is not None:
             for env in self.envs:
@@ -105,7 +103,7 @@ class MA_Ant_1v1(MA_VecTask):
         sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
 
         sensors_per_env = 4
-        self.vec_sensor_tensor = gymtorch.wrap_tensor(sensor_tensor).view(self.num_envs * self.num_agents * 2,
+        self.vec_sensor_tensor = gymtorch.wrap_tensor(sensor_tensor).view(self.num_envs * self.num_agents,
                                                                           sensors_per_env * 6)
 
         self.gym.refresh_dof_state_tensor(self.sim)
@@ -140,12 +138,26 @@ class MA_Ant_1v1(MA_VecTask):
         self.x_unit_tensor = to_torch([1, 0, 0], dtype=torch.float, device=self.device).repeat((2 * self.num_envs, 1))
         self.y_unit_tensor = to_torch([0, 1, 0], dtype=torch.float, device=self.device).repeat((2 * self.num_envs, 1))
         self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((2 * self.num_envs, 1))
-        self.extras['win'] = torch.zeros((self.num_envs,), device=self.device, dtype=torch.bool)
-        self.extras['lose'] = torch.zeros((self.num_envs,), device=self.device, dtype=torch.bool)
-        self.extras['draw'] = torch.zeros((self.num_envs,), device=self.device, dtype=torch.bool)
 
         self.hp = torch.ones((self.num_envs,), device=self.device, dtype=torch.float32) * 100
         self.hp_op = torch.ones((self.num_envs,), device=self.device, dtype=torch.float32) * 100
+
+    def allocate_buffers(self):
+        self.obs_buf = torch.zeros((self.num_agents * self.num_envs, self.num_obs), device=self.device,
+                                   dtype=torch.float)
+        self.rew_buf = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.float)
+        self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
+        self.timeout_buf = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.long)
+        self.progress_buf = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.long)
+        self.randomize_buf = torch.zeros(
+            self.num_envs * self.num_agents, device=self.device, dtype=torch.long)
+        self.extras = {
+            'win': torch.zeros(((self.num_agents - 1) * self.num_envs,), device=self.device, dtype=torch.bool),
+            'lose': torch.zeros(((self.num_agents - 1) * self.num_envs,), device=self.device, dtype=torch.bool),
+            'draw': torch.zeros(((self.num_agents - 1) * self.num_envs,), device=self.device, dtype=torch.bool)}
 
     def create_sim(self):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, 'z')
@@ -176,8 +188,8 @@ class MA_Ant_1v1(MA_VecTask):
         borderline_height = 0.01
         for height in range(20):
             for angle in range(360):
-                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height*height]
-                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height*height]
+                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height * height]
+                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
                 lines.append(begin_point)
                 lines.append(end_point)
         lines = np.array(lines, dtype=np.float32) * self.borderline_space
@@ -272,8 +284,6 @@ class MA_Ant_1v1(MA_VecTask):
         self.actor_indices_op = []
         self.actor_handles_op = []
         self.envs = []
-        self.obs_buf_op = torch.zeros(
-            (self.num_envs * self.num_agents, self.num_obs), device=self.device, dtype=torch.float)
         self.pos_before = torch.zeros(2, device=self.device)
         self.dof_limits_lower = []
         self.dof_limits_upper = []
@@ -329,10 +339,10 @@ class MA_Ant_1v1(MA_VecTask):
 
     def compute_reward(self, actions):
 
-        self.rew_buf[:], self.reset_buf[:], self.hp[:], self.hp_op[:], self.win_count, self.lose_count, self.draw_count, \
+        self.rew_buf[:], self.reset_buf[:], self.hp[:], self.hp_op[:], \
         self.extras['win'], self.extras['lose'], self.extras['draw'] = compute_ant_reward(
-            self.obs_buf,
-            self.obs_buf_op,
+            self.obs_buf[:self.num_envs],
+            self.obs_buf[self.num_envs:],
             self.reset_buf,
             self.progress_buf,
             self.pos_before,
@@ -352,9 +362,6 @@ class MA_Ant_1v1(MA_VecTask):
             self.dense_reward_scale,
             self.hp_decay_scale,
             self.dt,
-            self.win_count,
-            self.lose_count,
-            self.draw_count,
         )
 
     def compute_observations(self):
@@ -362,7 +369,7 @@ class MA_Ant_1v1(MA_VecTask):
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
         self.gym.refresh_dof_force_tensor(self.sim)
-        self.obs_buf[:] = \
+        self.obs_buf[:self.num_envs] = \
             compute_ant_observations(
                 self.root_states[0::2],
                 self.root_states[1::2],
@@ -374,7 +381,7 @@ class MA_Ant_1v1(MA_VecTask):
                 self.termination_height
             )
 
-        self.obs_buf_op[:] = compute_ant_observations(
+        self.obs_buf[self.num_envs:] = compute_ant_observations(
             self.root_states[1::2],
             self.root_states[0::2],
             self.dof_pos_op,
@@ -472,9 +479,9 @@ class MA_Ant_1v1(MA_VecTask):
         self.progress_buf += 1
         self.randomize_buf += 1
 
-        resets = self.reset_buf.reshape(self.num_envs, self.num_agents).sum(dim=1)
+        resets = self.reset_buf.reshape(self.num_envs, 1).sum(dim=1)
         # print(resets)
-        env_ids = (resets == self.num_agents).nonzero(as_tuple=False).flatten()
+        env_ids = (resets == 1).nonzero(as_tuple=False).flatten()
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
 
@@ -482,10 +489,10 @@ class MA_Ant_1v1(MA_VecTask):
         # print(self.obs_buf)
         # print(self.obs_buf_op)
         self.compute_reward(self.actions)
-        self.pos_before = self.obs_buf[:, :2].clone()
+        self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
 
     def get_number_of_agents(self):
-        return self.num_agents
+        return 1
 
     def zero_actions(self) -> torch.Tensor:
         """Returns a buffer with zero actions.
@@ -493,7 +500,7 @@ class MA_Ant_1v1(MA_VecTask):
         Returns:
             A buffer of zero torch actions
         """
-        actions = torch.zeros([self.num_envs * self.num_agents * 2, self.num_actions], dtype=torch.float32,
+        actions = torch.zeros([self.num_envs * self.num_agents, self.num_actions], dtype=torch.float32,
                               device=self.rl_device)
 
         return actions
@@ -501,7 +508,8 @@ class MA_Ant_1v1(MA_VecTask):
     def clear_count(self):
         self.dense_reward_scale *= 0.9
         self.hp_decay_scale *= 1.1
-        self.win_count = self.lose_count = self.draw_count = 0
+        self.extras['win'][:] = 0
+        self.extras['draw'][:] = 0
 
 
 #####################################################################
@@ -559,11 +567,8 @@ def compute_ant_reward(
         dense_reward_scale,
         hp_decay_scale,
         dt,
-        win_count,
-        lose_count,
-        draw_count,
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor,Tensor,Tensor,Tensor,Tensor,float, float,float, float,float,float,float,float,float,float,float,float,float,int,int,int) -> Tuple[Tensor, Tensor,Tensor,Tensor,int,int,int,Tensor,Tensor,Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor,Tensor,Tensor,Tensor,Tensor,float, float,float, float,float,float,float,float,float,float,float,float,float) -> Tuple[Tensor, Tensor,Tensor,Tensor,Tensor,Tensor,Tensor]
 
     hp -= (obs_buf[:, 2] < termination_height) * hp_decay_scale
     hp_op -= (obs_buf_op[:, 2] < termination_height) * hp_decay_scale
@@ -573,23 +578,19 @@ def compute_ant_reward(
     #
     is_out = is_out | (hp <= 0)
     is_out_op = is_out_op | (hp_op <= 0)
-
-    win_count += torch.sum(is_out_op)
-    lose_count += torch.sum(is_out)
-    draw_count += torch.sum(progress_buf >= max_episode_length - 1)
     # reset agents
     tmp_ones = torch.ones_like(reset_buf)
     reset = torch.where(is_out, tmp_ones, reset_buf)
     reset = torch.where(is_out_op, tmp_ones, reset)
     reset = torch.where(progress_buf >= max_episode_length - 1, tmp_ones, reset)
 
-    hp = torch.where(reset > 0, tmp_ones * 100, hp)
-    hp_op = torch.where(reset > 0, tmp_ones * 100, hp_op)
+    hp = torch.where(reset > 0, tmp_ones * 100., hp)
+    hp_op = torch.where(reset > 0, tmp_ones * 100., hp_op)
 
     win_reward = win_reward_scale * is_out_op
     lose_penalty = -win_reward_scale * is_out
     draw_penalty = torch.where(progress_buf >= max_episode_length - 1, tmp_ones * draw_penalty_scale,
-                               torch.zeros_like(reset))
+                               torch.zeros_like(reset, dtype=torch.float))
     move_reward = compute_move_reward(obs_buf[:, 0:2], pos_before,
                                       obs_buf_op[:, 0:2], dt,
                                       move_to_op_reward_scale)
@@ -603,7 +604,7 @@ def compute_ant_reward(
     dense_reward = move_reward + dof_at_limit_cost + push_reward + action_cost_penalty + not_move_penalty
     total_reward = win_reward + lose_penalty + draw_penalty + dense_reward * dense_reward_scale
 
-    return total_reward, reset, hp, hp_op, win_count, lose_count, draw_count, is_out_op, is_out, progress_buf >= max_episode_length - 1
+    return total_reward, reset, hp, hp_op, is_out_op, is_out, progress_buf >= max_episode_length - 1
 
 
 @torch.jit.script

@@ -57,20 +57,25 @@ class SFAgent(a2c_continuous.A2CAgent):
             'normalize_input': self.normalize_input,
         }
         self.max_his_player_num = 4
-        self.player_pool = self._build_player_pool(params)
+
         if params['op_load_path']:
             self.op_model = self.create_model()
             self.restore_op(params['op_load_path'])
         else:
             self.op_model = self.model
-        self.save_freq = 1000
-        self.update_win_rate = 0.9
-        self.games_to_check = 10000
+        self.players_dir = os.path.join(self.experiment_dir, 'players')
+        self.update_win_rate = 0.7
+        self.num_opponent_agents = params['num_agents'] - 1
+        self.player_pool = self._build_player_pool(params)
+
+        self.games_to_check = 4000
+        self.now_update_steps = 0
+        self.max_update_steps = 5000
         self.update_op_num = 0
-        self.op_batch_num = 32
-        self.fixed_env_num = 0
-        self.update_player_pool(self.model, player_idx=self.update_op_num)
-        assert self.num_actors % self.op_batch_num == 0
+        self.update_player_pool(self.op_model, player_idx=self.update_op_num)
+        self.resample_op(torch.arange(end=self.num_actors, device=self.device, dtype=torch.long))
+        # self.training_player = SinglePlayer(-1, self.model, self.device)
+
         assert self.num_actors % self.max_his_player_num == 0
 
     def _build_player_pool(self, params):
@@ -82,7 +87,7 @@ class SFAgent(a2c_continuous.A2CAgent):
                                       device=self.device)
         elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
-            vector_model_config['num_envs'] = self.num_actors
+            vector_model_config['num_envs'] = self.num_actors * self.num_opponent_agents
             vector_model_config['population_size'] = self.max_his_player_num
 
             return SFPlayerVectorizedPool(max_length=self.max_his_player_num, device=self.device,
@@ -92,7 +97,6 @@ class SFAgent(a2c_continuous.A2CAgent):
 
     def play_steps(self):
         update_list = self.update_list
-
         step_time = 0.0
         for n in range(self.horizon_length):
             if self.use_action_masks:
@@ -114,10 +118,9 @@ class SFAgent(a2c_continuous.A2CAgent):
             # print(res_dict_op['actions'])
             if self.player_pool_type == 'multi_thread':
                 self.player_pool.thread_pool.shutdown()
-
+            # print(res_dict.shape, res_dict_op.shape)
             self.obs, rewards, self.dones, infos = self.env_step(
                 torch.cat((res_dict['actions'], res_dict_op['actions']), dim=0))
-
             step_time += (step_time_end - step_time_start)
 
             shaped_rewards = self.rewards_shaper(rewards)
@@ -140,9 +143,10 @@ class SFAgent(a2c_continuous.A2CAgent):
 
             self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
-
-            for player in self.player_pool.players:
-                player.update(wins=infos['lose'], loses=infos['win'], draws=infos['draw'])
+            self.player_pool.update_player_metric(infos=infos)
+            # for player in self.player_pool.players:
+            #     player.update(wins=infos['win'], loses=infos['lose'], draws=infos['draw'])
+            self.resample_op(all_done_indices.flatten())
         # print(step_time)
         last_values = self.get_values(self.obs)
 
@@ -158,6 +162,28 @@ class SFAgent(a2c_continuous.A2CAgent):
         batch_dict['played_frames'] = self.batch_size
         batch_dict['step_time'] = step_time
         return batch_dict
+
+    def env_step(self, actions):
+        actions = self.preprocess_actions(actions)
+        obs, rewards, dones, infos = self.vec_env.step(actions)
+        obs['obs_op'] = obs['obs'][self.num_actors:]
+        obs['obs'] = obs['obs'][:self.num_actors]
+        if self.is_tensor_obses:
+            if self.value_size == 1:
+                rewards = rewards.unsqueeze(1)
+            return self.obs_to_tensors(obs), rewards.to(self.ppo_device), dones.to(self.ppo_device), infos
+        else:
+            if self.value_size == 1:
+                rewards = np.expand_dims(rewards, axis=1)
+            return self.obs_to_tensors(obs), torch.from_numpy(rewards).to(self.ppo_device).float(), torch.from_numpy(
+                dones).to(self.ppo_device), infos
+
+    def env_reset(self):
+        obs = self.vec_env.reset()
+        obs = self.obs_to_tensors(obs)
+        obs['obs_op'] = obs['obs'][self.num_actors:]
+        obs['obs'] = obs['obs'][:self.num_actors]
+        return obs
 
     def train(self):
         self.init_tensors()
@@ -248,18 +274,7 @@ class SFAgent(a2c_continuous.A2CAgent):
                                                mean_rewards)))
                     print('MAX EPOCHS NUM!')
                     should_exit = True
-                tot_win_rate = 0
-                tot_games_num = 0
-                # self_player process
-                for player in self.player_pool.players:
-                    win_rate = 1 - player.win_rate()
-                    self.writer.add_scalar(f'rate/win_rate_player_{player.player_idx}', win_rate, epoch_num)
-                    tot_win_rate += win_rate * player.games_num()
-                    tot_games_num += player.games_num()
-                if tot_games_num > 0:
-                    self.check_op_update(tot_win_rate / tot_games_num)
-                if self.epoch_num % 10 == 0:
-                    self.resample_op()
+                self.update_metric()
                 update_time = 0
 
             if self.multi_gpu:
@@ -269,9 +284,26 @@ class SFAgent(a2c_continuous.A2CAgent):
             if should_exit:
                 return self.last_mean_rewards, epoch_num
 
+    def update_metric(self):
+        tot_win_rate = 0
+        tot_games_num = 0
+        self.now_update_steps += 1
+        # self_player process
+        for player in self.player_pool.players:
+            win_rate = player.win_rate()
+            games = player.games_num()
+            self.writer.add_scalar(f'rate/win_rate_player_{player.player_idx}', win_rate, self.epoch_num)
+            tot_win_rate += win_rate * games
+            tot_games_num += games
+        win_rate = tot_win_rate / tot_games_num
+        if tot_games_num > self.games_to_check:
+            self.check_update_opponent(win_rate)
+        self.writer.add_scalar('rate/win_rate', win_rate, self.epoch_num)
+
     def get_action_values(self, obs, is_op=False):
         processed_obs = self._preproc_obs(obs['obs_op'] if is_op else obs['obs'])
-        self.model.eval()
+        if not is_op:
+            self.model.eval()
         input_dict = {
             'is_train': False,
             'prev_actions': None,
@@ -281,15 +313,11 @@ class SFAgent(a2c_continuous.A2CAgent):
         with torch.no_grad():
             if is_op:
                 res_dict = {
-                    "actions": torch.zeros((self.num_actors, self.actions_num), device=self.device),
-                    "values": torch.zeros((self.num_actors, 1), device=self.device)
+                    "actions": torch.zeros((self.num_actors * self.num_opponent_agents, self.actions_num),
+                                           device=self.device),
+                    "values": torch.zeros((self.num_actors * self.num_opponent_agents, 1), device=self.device)
                 }
                 self.player_pool.inference(input_dict, res_dict, processed_obs)
-                self_env_indices = torch.arange(end=self.fixed_env_num, device=self.device, dtype=torch.long)
-                input_dict['obs'] = processed_obs[self_env_indices]
-                out_dict = self.model(input_dict)
-                for key in res_dict:
-                    res_dict[key][self_env_indices] = out_dict[key]
             else:
                 res_dict = self.model(input_dict)
             if self.has_central_value:
@@ -302,13 +330,27 @@ class SFAgent(a2c_continuous.A2CAgent):
                 res_dict['values'] = value
         return res_dict
 
-    def resample_op(self):
-        env_indices = torch.arange(start=self.fixed_env_num, end=self.num_actors, device=self.device, dtype=torch.long,
+    def resample_op(self, resample_indices):
+        for op_idx in range(self.num_opponent_agents):
+            for player in self.player_pool.players:
+                player.remove_envs(resample_indices + op_idx * self.num_actors)
+        for op_idx in range(self.num_opponent_agents):
+            for env_idx in resample_indices:
+                player = self.player_pool.sample_player()
+                player.add_envs(env_idx + op_idx * self.num_actors)
+        for player in self.player_pool.players:
+            player.reset_envs()
+
+        # print("resample done")
+
+    def resample_batch(self):
+        env_indices = torch.arange(end=self.num_actors * self.num_opponent_agents,
+                                   device=self.device, dtype=torch.long,
                                    requires_grad=False)
-        step = (self.num_actors - self.fixed_env_num) // self.op_batch_num
+        step = self.num_actors // 32
         for player in self.player_pool.players:
             player.clear_envs()
-        for i in range(0, self.num_actors - self.fixed_env_num, step):
+        for i in range(0, self.num_actors, step):
             player = self.player_pool.sample_player()
             player.add_envs(env_indices[i:i + step])
         print("resample done")
@@ -319,18 +361,16 @@ class SFAgent(a2c_continuous.A2CAgent):
         if self.normalize_input and 'running_mean_std' in checkpoint:
             self.op_model.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
 
-    def check_op_update(self, win_rate):
-        done_count = self.vec_env.env.win_count + self.vec_env.env.lose_count + self.vec_env.env.draw_count + 1
+    def check_update_opponent(self, win_rate):
         # print(win_rate, done_count)
-        if done_count > self.games_to_check and win_rate > self.update_win_rate:
-            if self.update_win_rate > 0.6:
-                self.update_win_rate -= 0.03
+        if win_rate > self.update_win_rate or self.now_update_steps > self.max_update_steps:
             print(f'winrate:{win_rate},add opponent to player pool')
             self.update_op_num += 1
+            self.now_update_steps = 0
             self.update_player_pool(self.model, player_idx=self.update_op_num)
-            self.vec_env.env.clear_count()
-            self.save(os.path.join(self.nn_dir, f'policy_{self.update_op_num}'))
-        self.writer.add_scalar('rate/win_rate', win_rate, self.epoch_num)
+            self.player_pool.clear_player_metric()
+            self.resample_op(torch.arange(end=self.num_actors, device=self.device, dtype=torch.long))
+            self.save(os.path.join(self.players_dir, f'policy_{self.update_op_num}'))
 
     def create_model(self):
         model = self.network.build(self.base_model_config)
@@ -342,6 +382,5 @@ class SFAgent(a2c_continuous.A2CAgent):
         new_model.load_state_dict(copy.deepcopy(model.state_dict()))
         if hasattr(model, 'running_mean_std'):
             new_model.running_mean_std.load_state_dict(copy.deepcopy(model.running_mean_std.state_dict()))
-        player = SinglePlayer(player_idx, new_model, self.device)
+        player = SinglePlayer(player_idx, new_model, self.device, self.num_actors * self.num_opponent_agents)
         self.player_pool.add_player(player)
-        self.resample_op()

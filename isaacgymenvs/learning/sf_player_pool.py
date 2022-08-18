@@ -6,8 +6,6 @@ import torch.multiprocessing as mp
 import dill
 # import time
 from rl_games.algos_torch import model_builder
-from queue import Empty
-from trueskill import Rating
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, ALL_COMPLETED
 
 
@@ -54,16 +52,17 @@ def player_inference_process(pipe, queue, barrier):
 
 
 class SinglePlayer:
-    def __init__(self, player_idx, model, device, rating=None):
+    def __init__(self, player_idx, model, device, obs_batch_len=0, rating=None):
         self.model = model
         if model:
             self.model.eval()
         self.player_idx = player_idx
-        self._games = 0
-        self._wins = 0
-        self._loses = 0
-        self._draws = 0
+        self._games = torch.tensor(0, device=device, dtype=torch.float)
+        self._wins = torch.tensor(0, device=device, dtype=torch.float)
+        self._loses = torch.tensor(0, device=device, dtype=torch.float)
+        self._draws = torch.tensor(0, device=device, dtype=torch.float)
         self._decay = 0.998
+        self._has_env = torch.zeros((obs_batch_len,), device=device, dtype=torch.bool)
         self.device = device
         self.env_indices = torch.tensor([], device=device, dtype=torch.long, requires_grad=False)
         if rating:
@@ -72,23 +71,34 @@ class SinglePlayer:
     def __call__(self, input_dict):
         return self.model(input_dict)
 
+    def reset_envs(self):
+        self.env_indices = self._has_env.nonzero(as_tuple=True)
+
+    def remove_envs(self, env_indices):
+        self._has_env[env_indices] = False
+
     def add_envs(self, env_indices):
-        self.env_indices = torch.cat((self.env_indices, env_indices))
+        self._has_env[env_indices] = True
 
     def clear_envs(self):
         self.env_indices = torch.tensor([], device=self.device, dtype=torch.long, requires_grad=False)
 
-    def update(self, wins, loses, draws):
-        win_count = torch.sum(wins[self.env_indices]).item()
-        lose_count = torch.sum(loses[self.env_indices]).item()
-        draw_count = torch.sum(draws[self.env_indices]).item()
-        # 对手的win==当前policy_player的lose
+    def update_metric(self, wins, loses, draws):
+        win_count = torch.sum(wins[self.env_indices])
+        lose_count = torch.sum(loses[self.env_indices])
+        draw_count = torch.sum(draws[self.env_indices])
         for stats in (self._games, self._wins, self._loses, self._draws):
             stats *= self._decay
         self._games += win_count + lose_count + draw_count
         self._wins += win_count
         self._loses += lose_count
         self._draws += draw_count
+
+    def clear_metric(self):
+        self._games = torch.tensor(0, device=self.device, dtype=torch.float)
+        self._wins = torch.tensor(0, device=self.device, dtype=torch.float)
+        self._loses = torch.tensor(0, device=self.device, dtype=torch.float)
+        self._draws = torch.tensor(0, device=self.device, dtype=torch.float)
 
     def win_rate(self):
         if self.model is None:
@@ -108,7 +118,11 @@ class SFPlayerPool:
         self.max_length = max_length
         self.idx = 0
         self.device = device
-        # self.cuda_streams = [torch.cuda.Stream(self.device) for _ in range(self.max_length)]
+        self.weightings = {
+            "variance": lambda x: x * (1 - x),
+            "linear": lambda x: 1 - x,
+            "squared": lambda x: (1 - x) ** 2,
+        }
 
     def add_player(self, player):
         if len(self.players) < self.max_length:
@@ -118,17 +132,26 @@ class SFPlayerPool:
         self.idx += 1
         self.idx %= self.max_length
 
-    def sample_player(self):
+    def sample_player(self, weight='linear'):
+        weight_func = self.weightings[weight]
         player = \
-            random.choices(self.players, weights=[player.win_rate() for player in self.players])[0]
+            random.choices(self.players, weights=[weight_func(player.win_rate()) for player in self.players])[0]
         return player
+
+    def update_player_metric(self, infos):
+        for player in self.players:
+            player.update_metric(infos['win'], infos['lose'], infos['draw'])
+
+    def clear_player_metric(self):
+        for player in self.players:
+            player.clear_metric()
 
     def inference(self, input_dict, res_dict, processed_obs):
         # a = time.time()
         for i, player in enumerate(self.players):
             if len(player.env_indices) == 0:
                 continue
-            # with torch.cuda.stream(self.cuda_streams[i]):
+            # print(player.env_indices)
             input_dict['obs'] = processed_obs[player.env_indices]
             out_dict = player(input_dict)
             for key in res_dict:
@@ -153,7 +176,7 @@ class SFPlayerVectorizedPool(SFPlayerPool):
             (self.max_length, vector_model_config["num_envs"], vector_model_config['input_shape'][0]),
             dtype=torch.float32, device=self.device)
         for idx in range(max_length):
-            self.add_player(SinglePlayer(idx, None, self.device))
+            self.add_player(SinglePlayer(idx, None, self.device, vector_model_config["num_envs"]))
 
     def inference(self, input_dict, res_dict, processed_obs):
         for i, player in enumerate(self.players):

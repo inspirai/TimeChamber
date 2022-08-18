@@ -37,14 +37,6 @@ from isaacgymenvs.utils.torch_jit_utils import *
 from .base.ma_vec_task import MA_VecTask
 
 
-class BattleAgent:
-    def __init__(self, agent_idx, root_state, dof_pos, dof_vel):
-        self.agent_idx = agent_idx
-        self.root_state = root_state
-        self.dof_pos = dof_pos
-        self.dof_vel = dof_vel
-
-
 class MA_Ant_Battle(MA_VecTask):
 
     def __init__(self, cfg, sim_device, rl_device, graphics_device_id, headless, virtual_screen_capture, force_render):
@@ -118,7 +110,6 @@ class MA_Ant_Battle(MA_VecTask):
             ant_root_state = self.root_states[idx::self.num_agents]
             ant_dof_pos = dof_state_shaped[:, idx * self.num_dof:(idx + 1) * self.num_dof, 0]
             ant_dof_vel = dof_state_shaped[:, idx * self.num_dof:(idx + 1) * self.num_dof, 1]
-            ant_agent = BattleAgent(idx, ant_root_state, ant_dof_pos, ant_dof_vel)
             self.ant_agents_state.append((ant_root_state, ant_dof_pos, ant_dof_vel))
 
         self.initial_dof_pos = torch.zeros_like(self.ant_agents_state[0][1], device=self.device, dtype=torch.float)
@@ -140,9 +131,8 @@ class MA_Ant_Battle(MA_VecTask):
             (self.num_agents * self.num_envs, 1))
 
     def allocate_buffers(self):
-        self.obs_buf = torch.zeros((self.num_agents, self.num_envs, self.num_obs), device=self.device,
+        self.obs_buf = torch.zeros((self.num_agents * self.num_envs, self.num_obs), device=self.device,
                                    dtype=torch.float)
-        self.out_buf = torch.zeros((self.num_agents, self.num_envs))
         self.rew_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.float)
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
@@ -153,7 +143,13 @@ class MA_Ant_Battle(MA_VecTask):
         self.randomize_buf = torch.zeros(
             self.num_envs * self.num_agents, device=self.device, dtype=torch.long)
         self.rank_buf = torch.zeros((self.num_envs, self.num_agents), device=self.device, dtype=torch.long)
-        self.extras = {'ranks': torch.zeros((self.num_agents, self.num_agents), device=self.device, dtype=torch.float)}
+        self.extras = {'ranks': torch.zeros((self.num_agents, self.num_agents), device=self.device, dtype=torch.float),
+                       'win': torch.zeros((self.num_envs * (self.num_agents - 1),), device=self.device,
+                                          dtype=torch.bool),
+                       'lose': torch.zeros((self.num_envs * (self.num_agents - 1),), device=self.device,
+                                           dtype=torch.bool),
+                       'draw': torch.zeros((self.num_envs * (self.num_agents - 1),), device=self.device,
+                                           dtype=torch.bool)}
 
     def create_sim(self):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, 'z')
@@ -312,7 +308,8 @@ class MA_Ant_Battle(MA_VecTask):
 
     def compute_reward(self, actions):
 
-        self.rew_buf[:], self.reset_buf[:], self.rank_buf[:] = compute_ant_reward(
+        self.rew_buf[:], self.reset_buf[:], self.rank_buf[:], self.extras['win'], self.extras['lose'], self.extras[
+            'draw'] = compute_ant_reward(
             self.obs_buf,
             self.reset_buf,
             self.progress_buf,
@@ -339,7 +336,7 @@ class MA_Ant_Battle(MA_VecTask):
         self.gym.refresh_force_sensor_tensor(self.sim)
         self.gym.refresh_dof_force_tensor(self.sim)
         for agent_idx in range(self.num_agents):
-            self.obs_buf[agent_idx, :] = compute_ant_observations(
+            self.obs_buf[agent_idx * self.num_envs:(agent_idx + 1) * self.num_envs, :] = compute_ant_observations(
                 self.ant_agents_state,
                 self.progress_buf,
                 self.dof_limits_lower,
@@ -370,9 +367,8 @@ class MA_Ant_Battle(MA_VecTask):
         env_ids_int32 = self.actor_indices[agent_env_ids]
         rand_angle = torch.rand((len(env_ids),), device=self.device) * torch.pi * 2  # generate angle in 0-360
 
-        rand_pos = torch.ones((len(agent_env_ids), 2), device=self.device) * (
-                self.borderline_space * torch.ones((len(agent_env_ids), 2), device=self.device) - torch.rand(
-            (len(agent_env_ids), 2), device=self.device) * 2)
+        rand_pos = (self.borderline_space * torch.ones((len(agent_env_ids), 2), device=self.device) -
+                    torch.rand((len(agent_env_ids), 2), device=self.device))
 
         unit_angle = 2 * torch.pi / self.num_agents
         for agent_idx in range(self.num_agents):
@@ -398,9 +394,10 @@ class MA_Ant_Battle(MA_VecTask):
 
     def _record_rank(self, env_ids):
         for agent_idx in range(self.num_agents):
-            for rank in range(self.num_agents + 1):
-                self.extras['ranks'][agent_idx, rank] += torch.sum(self.rank_buf[env_ids][agent_idx] == rank)
-        print(self.extras)
+            for rank in range(self.num_agents):
+                self.extras['ranks'][agent_idx, rank] += torch.sum(self.rank_buf[env_ids, agent_idx] == rank + 1)
+
+        # print(self.extras)
 
     def pre_physics_step(self, actions):
         # actions.shape = [num_envs * num_agents, num_actions], stacked as followed:
@@ -408,7 +405,11 @@ class MA_Ant_Battle(MA_VecTask):
         #  [(agent1_act_1, agent1_act2)|(agent2_act1, agent2_act2)|...]_(env1),
         #  ... }
 
-        self.actions = actions.clone().to(self.device).view(self.num_envs, self.num_actions * self.num_agents)
+        # self.actions = actions.clone().to(self.device)
+        self.actions = torch.tensor([], device=self.device)
+        for agent_idx in range(self.num_agents):
+            self.actions = torch.cat((self.actions, actions[agent_idx * self.num_envs:(agent_idx + 1) * self.num_envs]),
+                                     dim=-1)
         tmp_actions = self.rank_buf.unsqueeze(-1).repeat_interleave(self.num_actions, dim=-1).view(self.num_envs,
                                                                                                    self.num_actions * self.num_agents)
         zero_actions = torch.zeros_like(tmp_actions, dtype=torch.float)
@@ -440,16 +441,17 @@ class MA_Ant_Battle(MA_VecTask):
         # print(self.obs_buf)
         # print(self.obs_buf_op)
         self.compute_reward(self.actions)
-        self.pos_before = self.obs_buf[0, :, :2].clone()
+        self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
         if self.viewer is not None:
             self.gym.clear_lines(self.viewer)
             for i, env in enumerate(self.envs):
                 self._add_circle_borderline(env, self.borderline_space - self.borderline_space_unit * self.progress_buf[
                     i].item())
-        print(self.rank_buf)
+        # print(self.rank_buf)
 
     def get_number_of_agents(self):
-        return self.num_agents
+        # only train 1 agent
+        return 1
 
     def zero_actions(self) -> torch.Tensor:
         """Returns a buffer with zero actions.
@@ -459,11 +461,12 @@ class MA_Ant_Battle(MA_VecTask):
         """
         actions = torch.zeros([self.num_envs * self.num_agents, self.num_actions], dtype=torch.float32,
                               device=self.rl_device)
-
+        self.extras['win'] = self.extras['lose'] = self.extras['draw'] = 0
         return actions
 
     def clear_count(self):
         self.dense_reward_scale *= 0.9
+        self.extras['ranks'] = torch.zeros((self.num_agents, self.num_agents), device=self.device, dtype=torch.float)
 
 
 #####################################################################
@@ -519,24 +522,36 @@ def compute_ant_reward(
         dt,
         num_agents
 ):
-    # type: (Tensor, Tensor, Tensor,Tensor,Tensor,Tensor,float,float,float,float,float,float,float,float,float,float,float,int) -> Tuple[Tensor, Tensor,Tensor]
-
+    # type: (Tensor, Tensor, Tensor,Tensor,Tensor,Tensor,float,float,float,float,float,float,float,float,float,float,float,int) -> Tuple[Tensor, Tensor,Tensor,Tensor,Tensor,Tensor]
+    obs = obs_buf.view(num_agents, -1, obs_buf.shape[1])
     nxt_rank_val = num_agents - torch.count_nonzero(now_rank, dim=-1).view(-1, 1).repeat_interleave(num_agents, dim=-1)
-    is_out = torch.sum(torch.square(obs_buf[:, :, 0:2]), dim=-1) >= \
+    is_out = torch.sum(torch.square(obs[:, :, 0:2]), dim=-1) >= \
              (borderline_space - progress_buf * borderline_space_unit).square()
     nxt_rank = torch.where((torch.transpose(is_out, 0, 1) > 0) & (now_rank == 0), nxt_rank_val, now_rank)
     # reset agents
     tmp_ones = torch.ones_like(reset_buf)
     reset = torch.where(is_out[0, :], tmp_ones, reset_buf)
     reset = torch.where(progress_buf >= max_episode_length - 1, tmp_ones, reset)
-    nxt_rank = torch.where(reset.view(-1, 1).repeat_interleave(num_agents, dim=-1) & (nxt_rank == 0), nxt_rank_val + 1,
+    reset = torch.where(torch.min(is_out[1:], dim=0).values, tmp_ones, reset)
+    tmp_reset = reset.view(-1, 1).repeat_interleave(num_agents, dim=-1)
+    nxt_rank = torch.where((tmp_reset == 1) & (nxt_rank == 0),
+                           nxt_rank_val - 1,
                            nxt_rank)
+    # compute metric logic
+    tmp_reset = reset.view(1, -1).repeat_interleave(num_agents - 1, dim=0)
+    tmp_zeros = torch.zeros_like(is_out[1:], dtype=torch.bool)
+    wins = torch.ones_like(is_out[1:], dtype=torch.bool)
+    loses = torch.ones_like(is_out[1:], dtype=torch.bool)
+    draws = (progress_buf >= max_episode_length - 1).view(1, -1).repeat_interleave(num_agents - 1, dim=0)
+    wins = torch.where(is_out[1:], wins & (tmp_reset == 1), tmp_zeros)
+    draws = torch.where(is_out[1:] == 0, draws & (tmp_reset == 1), tmp_zeros)
+    loses = torch.where(is_out[1:] == 0, loses & (tmp_reset == 1) & (draws == 0), tmp_zeros)
 
     sparse_reward = 1.0 * reset
-    reward_per_rank = 2 * win_reward_scale / num_agents
+    reward_per_rank = 2 * win_reward_scale / (num_agents - 1)
     sparse_reward = sparse_reward * (win_reward_scale - (nxt_rank[:, 0] - 1) * reward_per_rank)
-    stay_in_center_reward = stay_in_center_reward_scale * torch.exp(-torch.linalg.norm(obs_buf[0, :, :2], dim=-1))
-    dof_at_limit_cost = torch.sum(obs_buf[0, :, 13:21] > 0.99, dim=-1) * joints_at_limit_cost_scale
+    stay_in_center_reward = stay_in_center_reward_scale * torch.exp(-torch.linalg.norm(obs[0, :, :2], dim=-1))
+    dof_at_limit_cost = torch.sum(obs[0, :, 13:21] > 0.99, dim=-1) * joints_at_limit_cost_scale
     action_cost_penalty = torch.sum(torch.square(torques), dim=1) * action_cost_scale
     # print("torques:", torques[0, 2])
     not_move_penalty = torch.exp(-torch.sum(torch.abs(torques), dim=1))
@@ -544,7 +559,7 @@ def compute_ant_reward(
     dense_reward = dof_at_limit_cost + action_cost_penalty + not_move_penalty + stay_in_center_reward
     total_reward = sparse_reward + dense_reward * dense_reward_scale
 
-    return total_reward, reset, nxt_rank
+    return total_reward, reset, nxt_rank, wins.flatten(), loses.flatten(), draws.flatten()
 
 
 @torch.jit.script
@@ -570,7 +585,7 @@ def compute_ant_observations(
                      # dis to border
                      now_border_space,
                      torch.unsqueeze(self_root_state[:, 2] < termination_height, -1)), dim=-1)
-    for op_idx in range(0, num_agents):
+    for op_idx in range(num_agents):
         if op_idx == agent_idx:
             continue
         op_root_state, op_dof_pos, op_dof_vel = ant_agents_state[op_idx]
@@ -579,6 +594,7 @@ def compute_ant_observations(
                          dof_pos_scaled, op_dof_vel * dof_vel_scale,
                          now_border_space - torch.sqrt(torch.sum(op_root_state[:, :2].square(), dim=-1)).unsqueeze(-1),
                          torch.unsqueeze(op_root_state[:, 2] < termination_height, -1)), dim=-1)
+    # print(obs.shape)
     return obs
 
 
