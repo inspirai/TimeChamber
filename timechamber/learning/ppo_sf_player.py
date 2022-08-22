@@ -152,17 +152,28 @@ class SFPlayer(BasePlayer):
         else:
             return SFPlayerPool(max_length=player_num, device=self.device)
 
-    def _update_rating(self, info, enc_indices):
-        for env_idx in enc_indices:
-            player = self.players_per_env[env_idx][0]
-            op_player = self.players_per_env[env_idx][1]
-            if info['win'][env_idx]:
-                player.rating, op_player.rating = self.elo.get_new_ratings([player.rating, op_player.rating])
-            elif info['lose'][env_idx]:
-                op_player.rating, player.rating = self.elo.get_new_ratings([op_player.rating, player.rating])
-            elif info['draw'][env_idx]:
-                player.rating, op_player.rating = self.elo.get_new_ratings([player.rating, op_player.rating],
-                                                                           result_order=[1, 1])
+    def _update_rating(self, info, env_indices):
+        for env_idx in env_indices:
+            if self.num_opponents == 1:
+                player = self.players_per_env[env_idx][0]
+                op_player = self.players_per_env[env_idx][1]
+                if info['win'][env_idx]:
+                    player.rating, op_player.rating = self.elo.get_new_ratings([player.rating, op_player.rating])
+                elif info['lose'][env_idx]:
+                    op_player.rating, player.rating = self.elo.get_new_ratings([op_player.rating, player.rating])
+                elif info['draw'][env_idx]:
+                    player.rating, op_player.rating = self.elo.get_new_ratings([player.rating, op_player.rating],
+                                                                               result_order=[1, 1])
+            else:
+                ranks = info['ranks'][env_idx].cpu().numpy()
+                players_sorted_by_rank = sorted(enumerate(self.players_per_env[env_idx]), key=lambda x: ranks[x[0]])
+                sorted_ranks = sorted(ranks)
+                now_ratings = [player.rating for idx, player in players_sorted_by_rank]
+                new_ratings = self.elo.get_new_ratings(now_ratings, result_order=sorted_ranks)
+                # print(now_ratings, new_ratings)
+                # assert new_ratings[0] > 0 and new_ratings[1] > 0 and new_ratings[2] > 0
+                for idx, new_rating in enumerate(new_ratings):
+                    players_sorted_by_rank[idx][1].rating = new_rating
 
     def run(self):
         n_games = self.games_num

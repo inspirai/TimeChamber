@@ -142,8 +142,7 @@ class MA_Ant_Battle(MA_VecTask):
             self.num_envs, device=self.device, dtype=torch.long)
         self.randomize_buf = torch.zeros(
             self.num_envs * self.num_agents, device=self.device, dtype=torch.long)
-        self.rank_buf = torch.zeros((self.num_envs, self.num_agents), device=self.device, dtype=torch.long)
-        self.extras = {'ranks': torch.zeros((self.num_agents, self.num_agents), device=self.device, dtype=torch.float),
+        self.extras = {'ranks': torch.zeros((self.num_envs, self.num_agents), device=self.device, dtype=torch.long),
                        'win': torch.zeros((self.num_envs * (self.num_agents - 1),), device=self.device,
                                           dtype=torch.bool),
                        'lose': torch.zeros((self.num_envs * (self.num_agents - 1),), device=self.device,
@@ -275,13 +274,14 @@ class MA_Ant_Battle(MA_VecTask):
 
     def compute_reward(self, actions):
 
-        self.rew_buf[:], self.reset_buf[:], self.rank_buf[:], self.extras['win'], self.extras['lose'], self.extras[
+        self.rew_buf[:], self.reset_buf[:], self.extras['ranks'][:], self.extras['win'], self.extras['lose'], \
+        self.extras[
             'draw'] = compute_ant_reward(
             self.obs_buf,
             self.reset_buf,
             self.progress_buf,
             self.torques,
-            self.rank_buf,
+            self.extras['ranks'],
             self.termination_height,
             self.max_episode_length,
             self.borderline_space,
@@ -352,17 +352,9 @@ class MA_Ant_Battle(MA_VecTask):
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
-        self._record_rank(env_ids)
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
-        self.rank_buf[env_ids, :] = 0
-
-    def _record_rank(self, env_ids):
-        for agent_idx in range(self.num_agents):
-            for rank in range(self.num_agents):
-                self.extras['ranks'][agent_idx, rank] += torch.sum(self.rank_buf[env_ids, agent_idx] == rank + 1)
-
-
+        self.extras['ranks'][env_ids] = 0
 
     def pre_physics_step(self, actions):
         # actions.shape = [num_envs * num_agents, num_actions], stacked as followed:
@@ -374,8 +366,8 @@ class MA_Ant_Battle(MA_VecTask):
         for agent_idx in range(self.num_agents):
             self.actions = torch.cat((self.actions, actions[agent_idx * self.num_envs:(agent_idx + 1) * self.num_envs]),
                                      dim=-1)
-        tmp_actions = self.rank_buf.unsqueeze(-1).repeat_interleave(self.num_actions, dim=-1).view(self.num_envs,
-                                                                                                   self.num_actions * self.num_agents)
+        tmp_actions = self.extras['ranks'].unsqueeze(-1).repeat_interleave(self.num_actions, dim=-1).view(self.num_envs,
+                                                                                                          self.num_actions * self.num_agents)
         zero_actions = torch.zeros_like(tmp_actions, dtype=torch.float)
         self.actions = torch.where(tmp_actions > 0, zero_actions, self.actions)
 
@@ -396,15 +388,13 @@ class MA_Ant_Battle(MA_VecTask):
             self.reset_idx(env_ids)
 
         self.compute_observations()
-        # print(self.obs_buf)
-        # print(self.obs_buf_op)
         self.compute_reward(self.actions)
+
         if self.viewer is not None:
             self.gym.clear_lines(self.viewer)
             for i, env in enumerate(self.envs):
                 self._add_circle_borderline(env, self.borderline_space - self.borderline_space_unit * self.progress_buf[
                     i].item())
-        # print(self.rank_buf)
 
     def get_number_of_agents(self):
         # only train 1 agent
