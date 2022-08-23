@@ -49,7 +49,7 @@ def rescale_actions(low, high, action):
 
 class SFPlayer(BasePlayer):
     def __init__(self, params):
-        params['config']['device_name'] = 'cpu'
+        params['config']['device_name'] = params['device']
         super().__init__(params)
         print(f'params:{params}')
         self.network = self.config['network']
