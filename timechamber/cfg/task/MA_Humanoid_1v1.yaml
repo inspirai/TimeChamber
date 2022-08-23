@@ -1,0 +1,61 @@
+# if given, will override the device setting in gym.
+name: MA_Humanoid_1v1
+
+physics_engine: ${..physics_engine}
+env:
+  numEnvs: 4096
+  envSpacing: 5
+  episodeLength: 300
+  isFlagrun: False
+  enableDebugVis: False
+  clipActions: 1.0
+  clipObservations: 5.0
+  pdControl: True
+  powerScale: 1.0
+  controlFrequencyInv: 2 # 30 Hz
+  stateInit: "Default"
+  hybridInitProb: 0.5
+  numAMPObsSteps: 10
+
+  localRootObs: True
+  keyBodies: [ "right_hand", "left_hand", "right_foot", "left_foot", "sword", "shield" ]
+  contactBodies: [ "right_foot", "left_foot" ]
+  terminationHeight: 0.15
+  enableEarlyTermination: True
+
+  strikeBodyNames: [ "sword", "right_hand", "right_lower_arm" ]
+  enableTaskObs: True
+  motion_file: "../assets/RL_Avatar_Idle_Ready_Motion.npy"
+  asset:
+    assetRoot: "assets"
+    assetFileName: "mjcf/amp_humanoid_sword_shield.xml"
+
+  plane:
+    staticFriction: 1.0
+    dynamicFriction: 1.0
+    restitution: 0.0
+
+sim:
+  dt: 0.0166 # 1/60 s
+  substeps: 2
+  up_axis: 'z'
+  use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+  gravity: [ 0.0, 0.0, -9.81 ]
+  physx:
+    solver_type: ${....solver_type}
+    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    max_gpu_contact_pairs: 8388608 # 8*1024*1024
+    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (default - all contacts)
+    num_subscenes: ${....num_subscenes}
+    num_threads: 4
+    num_position_iterations: 4
+    num_velocity_iterations: 0
+    contact_offset: 0.02
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 10.0
+    default_buffer_size_multiplier: 5.0
+
+  flex:
+    num_inner_iterations: 10
+    warm_start: 0.25

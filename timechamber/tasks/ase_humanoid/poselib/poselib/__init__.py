@@ -27,13 +27,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from .ma_ant_1v1 import MA_Ant_1v1
-from .ma_ant_battle import MA_Ant_Battle
-from .ma_humanoid_1v1 import MA_Humanoid_1v1
+__version__ = "0.0.1"
 
-# Mappings from strings to environments
-isaacgym_task_map = {
-    "MA_Ant_1v1": MA_Ant_1v1,
-    "MA_Ant_Battle": MA_Ant_Battle,
-    "MA_Humanoid_1v1": MA_Humanoid_1v1,
-}
+from .core import *

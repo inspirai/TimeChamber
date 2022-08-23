@@ -37,7 +37,7 @@ test: False
 checkpoint: ''
 op_checkpoint: ''
 player_pool_type: ''
-num_agents: 2
+num_agents: 3
 # set to True to use multi-gpu horovod training
 multi_gpu: False
 
