@@ -111,7 +111,7 @@ class SinglePlayer:
         return self._games
 
 
-class SFPlayerPool:
+class PFSPPlayerPool:
     def __init__(self, max_length, device):
         assert max_length > 0
         self.players = []
@@ -156,9 +156,9 @@ class SFPlayerPool:
                 res_dict[key][player.env_indices] = out_dict[key]
 
 
-class SFPlayerVectorizedPool(SFPlayerPool):
+class PFSPPlayerVectorizedPool(PFSPPlayerPool):
     def __init__(self, max_length, device, vector_model_config, params):
-        super(SFPlayerVectorizedPool, self).__init__(max_length, device)
+        super(PFSPPlayerVectorizedPool, self).__init__(max_length, device)
         params['model']['name'] = 'vectorized_a2c'
         params['network']['name'] = 'vectorized_a2c'
         builder = model_builder.ModelBuilder()
@@ -189,7 +189,7 @@ class SFPlayerVectorizedPool(SFPlayerPool):
         super().add_player(player)
 
 
-class SFPlayerThreadPool(SFPlayerPool):
+class PFSPPlayerThreadPool(PFSPPlayerPool):
     def __init__(self, max_length, device):
         super().__init__(max_length, device)
         self.thread_pool = ThreadPoolExecutor(max_workers=self.max_length)
@@ -202,9 +202,9 @@ class SFPlayerThreadPool(SFPlayerPool):
                              [processed_obs for _ in range(len(self.players))])
 
 
-class SFPlayerProcessPool(SFPlayerPool):
+class PFSPPlayerProcessPool(PFSPPlayerPool):
     def __init__(self, max_length, device):
-        super(SFPlayerProcessPool, self).__init__(max_length, device)
+        super(PFSPPlayerProcessPool, self).__init__(max_length, device)
         self.inference_processes = []
         self.queues = []
         self.producer_pipes = []

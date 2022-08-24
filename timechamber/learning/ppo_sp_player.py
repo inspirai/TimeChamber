@@ -34,7 +34,8 @@ import random
 from rl_games.algos_torch import torch_ext
 from rl_games.common.tr_helpers import unsqueeze_obs
 from rl_games.common.player import BasePlayer
-from .sf_player_pool import SFPlayerPool, SFPlayerVectorizedPool, SFPlayerThreadPool, SFPlayerProcessPool, SinglePlayer
+from .pfsp_player_pool import PFSPPlayerPool, PFSPPlayerVectorizedPool, PFSPPlayerThreadPool, PFSPPlayerProcessPool, \
+    SinglePlayer
 import matplotlib.pyplot as plt
 
 from multielo import MultiElo
@@ -47,7 +48,7 @@ def rescale_actions(low, high, action):
     return scaled_action
 
 
-class SFPlayer(BasePlayer):
+class SPPlayer(BasePlayer):
     def __init__(self, params):
         params['config']['device_name'] = params['device']
         super().__init__(params)
@@ -137,20 +138,20 @@ class SFPlayer(BasePlayer):
     def _build_player_pool(self, params, player_num):
 
         if self.player_pool_type == 'multi_thread':
-            return SFPlayerProcessPool(max_length=player_num,
-                                       device=self.device)
+            return PFSPPlayerProcessPool(max_length=player_num,
+                                         device=self.device)
         elif self.player_pool_type == 'multi_process':
-            return SFPlayerThreadPool(max_length=player_num,
-                                      device=self.device)
+            return PFSPPlayerThreadPool(max_length=player_num,
+                                        device=self.device)
         elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponents
             vector_model_config['population_size'] = player_num
 
-            return SFPlayerVectorizedPool(max_length=player_num, device=self.device,
-                                          vector_model_config=vector_model_config, params=params)
+            return PFSPPlayerVectorizedPool(max_length=player_num, device=self.device,
+                                            vector_model_config=vector_model_config, params=params)
         else:
-            return SFPlayerPool(max_length=player_num, device=self.device)
+            return PFSPPlayerPool(max_length=player_num, device=self.device)
 
     def _update_rating(self, info, env_indices):
         for env_idx in env_indices:

@@ -44,7 +44,7 @@ from .base.ma_vec_task import MA_VecTask
 
 
 # todo critic_state full obs
-class MA_Ant_1v1(MA_VecTask):
+class MA_Ant_Sumo(MA_VecTask):
 
     def __init__(self, cfg, sim_device, rl_device, graphics_device_id, headless, virtual_screen_capture, force_render):
 

@@ -51,8 +51,8 @@ def launch_rlg_hydra(cfg: DictConfig):
     from rl_games.common import env_configurations, vecenv
     from rl_games.torch_runner import Runner
     from rl_games.algos_torch import model_builder
-    from timechamber.learning import ppo_sf_agent
-    from timechamber.learning import ppo_sf_player
+    from timechamber.learning import ppo_sp_agent
+    from timechamber.learning import ppo_sp_player
     from timechamber.learning import vectorized_models
     from timechamber.learning import vectorized_network_builder
     import timechamber
@@ -130,10 +130,10 @@ def launch_rlg_hydra(cfg: DictConfig):
     # register new AMP network builder and agent
     def build_runner(algo_observer):
         runner = Runner(algo_observer)
-        runner.algo_factory.register_builder('self_play_continuous', lambda **kwargs: ppo_sf_agent.SFAgent(**kwargs))
+        runner.algo_factory.register_builder('self_play_continuous', lambda **kwargs: ppo_sp_agent.SPAgent(**kwargs))
 
         runner.player_factory.register_builder('self_play_continuous',
-                                               lambda **kwargs: ppo_sf_player.SFPlayer(**kwargs))
+                                               lambda **kwargs: ppo_sp_player.SPPlayer(**kwargs))
         model_builder.register_model('vectorized_a2c',
                                      lambda network, **kwargs: vectorized_models.ModelVectorizedA2C(network))
         model_builder.register_network('vectorized_a2c',

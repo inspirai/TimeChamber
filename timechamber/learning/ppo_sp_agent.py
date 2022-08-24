@@ -32,7 +32,8 @@ from gym import spaces
 import numpy as np
 import os
 import time
-from .sf_player_pool import SFPlayerPool, SinglePlayer, SFPlayerThreadPool, SFPlayerProcessPool, SFPlayerVectorizedPool
+from .pfsp_player_pool import PFSPPlayerPool, SinglePlayer, PFSPPlayerThreadPool, PFSPPlayerProcessPool, \
+    PFSPPlayerVectorizedPool
 from rl_games.algos_torch import a2c_continuous
 from rl_games.common.a2c_common import swap_and_flatten01
 from rl_games.algos_torch import torch_ext
@@ -43,7 +44,7 @@ from tensorboardX import SummaryWriter
 import torch.distributed as dist
 
 
-class SFAgent(a2c_continuous.A2CAgent):
+class SPAgent(a2c_continuous.A2CAgent):
     def __init__(self, base_name, params):
         params['config']['device'] = params['device']
         super().__init__(base_name, params)
@@ -56,7 +57,7 @@ class SFAgent(a2c_continuous.A2CAgent):
             'normalize_value': self.normalize_value,
             'normalize_input': self.normalize_input,
         }
-        self.max_his_player_num = 4
+        self.max_his_player_num = params['player_pool_length']
 
         if params['op_load_path']:
             self.op_model = self.create_model()
@@ -64,13 +65,13 @@ class SFAgent(a2c_continuous.A2CAgent):
         else:
             self.op_model = self.model
         self.players_dir = os.path.join(self.experiment_dir, 'players')
-        self.update_win_rate = 0.7
+        self.update_win_rate = params['update_win_rate']
         self.num_opponent_agents = params['num_agents'] - 1
         self.player_pool = self._build_player_pool(params)
 
-        self.games_to_check = 4000
+        self.games_to_check = params['games_to_check']
         self.now_update_steps = 0
-        self.max_update_steps = 5000
+        self.max_update_steps = params['max_update_steps']
         self.update_op_num = 0
         self.update_player_pool(self.op_model, player_idx=self.update_op_num)
         self.resample_op(torch.arange(end=self.num_actors, device=self.device, dtype=torch.long))
@@ -79,20 +80,20 @@ class SFAgent(a2c_continuous.A2CAgent):
 
     def _build_player_pool(self, params):
         if self.player_pool_type == 'multi_thread':
-            return SFPlayerProcessPool(max_length=self.max_his_player_num,
-                                       device=self.device)
+            return PFSPPlayerProcessPool(max_length=self.max_his_player_num,
+                                         device=self.device)
         elif self.player_pool_type == 'multi_process':
-            return SFPlayerThreadPool(max_length=self.max_his_player_num,
-                                      device=self.device)
+            return PFSPPlayerThreadPool(max_length=self.max_his_player_num,
+                                        device=self.device)
         elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponent_agents
             vector_model_config['population_size'] = self.max_his_player_num
 
-            return SFPlayerVectorizedPool(max_length=self.max_his_player_num, device=self.device,
-                                          vector_model_config=vector_model_config, params=params)
+            return PFSPPlayerVectorizedPool(max_length=self.max_his_player_num, device=self.device,
+                                            vector_model_config=vector_model_config, params=params)
         else:
-            return SFPlayerPool(max_length=self.max_his_player_num, device=self.device)
+            return PFSPPlayerPool(max_length=self.max_his_player_num, device=self.device)
 
     def play_steps(self):
         update_list = self.update_list
@@ -112,7 +113,6 @@ class SFAgent(a2c_continuous.A2CAgent):
                 self.experience_buffer.update_data(k, n, res_dict[k])
             if self.has_central_value:
                 self.experience_buffer.update_data('states', n, self.obs['states'])
-
 
             if self.player_pool_type == 'multi_thread':
                 self.player_pool.thread_pool.shutdown()
@@ -337,7 +337,6 @@ class SFAgent(a2c_continuous.A2CAgent):
                 player.add_envs(env_idx + op_idx * self.num_actors)
         for player in self.player_pool.players:
             player.reset_envs()
-
 
     def resample_batch(self):
         env_indices = torch.arange(end=self.num_actors * self.num_opponent_agents,

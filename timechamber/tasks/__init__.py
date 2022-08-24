@@ -27,11 +27,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from .ma_ant_1v1 import MA_Ant_1v1
+from .ma_ant_sumo import MA_Ant_Sumo
 from .ma_ant_battle import MA_Ant_Battle
 
 # Mappings from strings to environments
 isaacgym_task_map = {
-    "MA_Ant_1v1": MA_Ant_1v1,
+    "MA_Ant_Sumo": MA_Ant_Sumo,
     "MA_Ant_Battle": MA_Ant_Battle
 }

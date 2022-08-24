@@ -1,5 +1,5 @@
 # used to create the object
-name: MA_Ant_1v1
+name: MA_Ant_Sumo
 
 physics_engine: ${..physics_engine}
 
