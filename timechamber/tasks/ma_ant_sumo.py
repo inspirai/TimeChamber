@@ -478,7 +478,6 @@ class MA_Ant_Sumo(MA_VecTask):
 
     def clear_count(self):
         self.dense_reward_scale *= 0.9
-        self.hp_decay_scale *= 1.1
         self.extras['win'][:] = 0
         self.extras['draw'][:] = 0
 

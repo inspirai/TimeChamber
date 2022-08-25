@@ -60,11 +60,12 @@ class SPAgent(a2c_continuous.A2CAgent):
         self.max_his_player_num = params['player_pool_length']
 
         if params['op_load_path']:
-            self.op_model = self.create_model()
+            self.init_op_model = self.create_model()
             self.restore_op(params['op_load_path'])
         else:
-            self.op_model = self.model
-        self.players_dir = os.path.join(self.experiment_dir, 'players')
+            self.init_op_model = self.model
+        self.players_dir = os.path.join(self.experiment_dir, 'policy_dir')
+        os.makedirs(self.players_dir, exist_ok=True)
         self.update_win_rate = params['update_win_rate']
         self.num_opponent_agents = params['num_agents'] - 1
         self.player_pool = self._build_player_pool(params)
@@ -73,7 +74,7 @@ class SPAgent(a2c_continuous.A2CAgent):
         self.now_update_steps = 0
         self.max_update_steps = params['max_update_steps']
         self.update_op_num = 0
-        self.update_player_pool(self.op_model, player_idx=self.update_op_num)
+        self.update_player_pool(self.init_op_model, player_idx=self.update_op_num)
         self.resample_op(torch.arange(end=self.num_actors, device=self.device, dtype=torch.long))
 
         assert self.num_actors % self.max_his_player_num == 0
@@ -103,9 +104,9 @@ class SPAgent(a2c_continuous.A2CAgent):
                 masks = self.vec_env.get_action_masks()
                 res_dict = self.get_masked_action_values(self.obs, masks)
             else:
-                step_time_start = time.time()
+
                 res_dict_op = self.get_action_values(self.obs, is_op=True)
-                step_time_end = time.time()
+
                 res_dict = self.get_action_values(self.obs)
             self.experience_buffer.update_data('obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones)
@@ -116,9 +117,10 @@ class SPAgent(a2c_continuous.A2CAgent):
 
             if self.player_pool_type == 'multi_thread':
                 self.player_pool.thread_pool.shutdown()
-
+            step_time_start = time.time()
             self.obs, rewards, self.dones, infos = self.env_step(
                 torch.cat((res_dict['actions'], res_dict_op['actions']), dim=0))
+            step_time_end = time.time()
             step_time += (step_time_end - step_time_start)
 
             shaped_rewards = self.rewards_shaper(rewards)
@@ -352,9 +354,9 @@ class SPAgent(a2c_continuous.A2CAgent):
 
     def restore_op(self, fn):
         checkpoint = torch_ext.load_checkpoint(fn)
-        self.op_model.load_state_dict(checkpoint['model'])
+        self.init_op_model.load_state_dict(checkpoint['model'])
         if self.normalize_input and 'running_mean_std' in checkpoint:
-            self.op_model.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+            self.init_op_model.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
 
     def check_update_opponent(self, win_rate):
         if win_rate > self.update_win_rate or self.now_update_steps > self.max_update_steps:

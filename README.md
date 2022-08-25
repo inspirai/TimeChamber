@@ -3,34 +3,36 @@
 ****
 
 **TimeChamber** is a large scale self-play framework running on parallel simulation.
-Running self-play algorithms always needs lots of hardware resources, especially on 3D physically simulated
+Running self-play algorithms always need lots of hardware resources, especially on 3D physically simulated
 environments.
-We provide a self-play framework that can achieve fast training and evaluation with limited hardware resources.
+We provide a self-play framework that can achieve fast training and evaluation with very limited hardware resources.
 TimeChamber is developed with the following key features:
 
 - **Parallel Simulation**: TimeChamber is built within [Isaac Gym](https://developer.nvidia.com/isaac-gym). Isaac Gym is
-  a fast GPU-based simulation platform.
-  It supports running thousands of environments in parallel on a single GPU.
-- **Parallel Evaluation**: Inspired by Vectorization techniques
+  a fast GPU-based simulation platform. It supports running thousands of environments in parallel on a single GPU.For
+  example, on one NVIDIA Laptop RTX 3070Ti GPU, TimeChamber can reach **80,000+
+  mean FPS** by running 4,096 environments in parallel.
+- **Parallel Evaluation**: TimeChamber can fast calculate dozens of policies' ELO
+  rating(represent their combat power). It also supports multi-player ELO calculations
+  by [multi-elo](https://github.com/djcunningham0/multielo). Inspired by Vectorization techniques
   for [fast population-based training](https://github.com/instadeepai/fastpbrl), we leverage the
-  vectorized models to evaluate different policy in parallel. TimeChamber can fast calculate dozens of policies' elo
-  rating(represent their battle force). It also supports multi-player elo calculations
-  by [multi-elo](https://github.com/djcunningham0/multielo).
-- **Prioritized Fictitious Self-Play Benchmark**: We implement a classic PPO-self-play algorithm on top
-  of [rl_games](https://github.com/Denys88/rl_games).
-  We provide a prioritized player pool to avoid cycles and improve the diversity of training policy.
-- **Competitive Multi-Agent Tasks**: We introduce some competitive multi-agent tasks(e.g.,Ant Sumo,Ant
-  Battle).
-  These tasks test the efficiency of our self-play framework. After days of training,our agent can discover some
-  physical skills like pulling, jumping,etc.
+  vectorized models to evaluate different policy in parallel.
+- **Prioritized Fictitious Self-Play Benchmark**: We implement a classic PPO self-play algorithm on top
+  of [rl_games](https://github.com/Denys88/rl_games), with a prioritized player pool to avoid cycles and improve the
+  diversity of training policy.
+- **Competitive Multi-Agent Tasks**: We introduce two competitive multi-agent tasks(e.g.,Ant Sumo,Ant
+  Battle) as examples.
+  The efficiency of our self-play framework has been tested on these tasks. After days of training,our agent can
+  discover some interesting
+  physical skills like pulling, jumping,etc. **Welcome to contribute your own environments!**
 
 ## Installation
 
 ****
 Download and follow the installation instructions of Isaac Gym: https://developer.nvidia.com/isaac-gym  
 Ensure that Isaac Gym works on your system by running one of the examples from the `python/examples`
-directory, like `joint_monkey.py`. Please follow troubleshooting steps described in the Isaac Gym Preview Release 3/4
-install instructions if you have any trouble running the samples.  
+directory, like `joint_monkey.py`. If you have any trouble running the samples, please follow troubleshooting steps
+described in the [Isaac Gym Preview Release 3/4 installation instructions](https://developer.nvidia.com/isaac-gym).  
 Then install this repo:
 
 ```bash
@@ -43,29 +45,28 @@ pip install -e .
 
 ### Tasks
 
-Source code for tasks can be found in  `timechamber/tasks`, more interesting tasks will come soon(wellcome to
-contribute)
+Source code for tasks can be found in  `timechamber/tasks`, more interesting tasks will come soon.
 
 #### Ant Sumo
 
 Ant Sumo is a 3D environment with simulated physics that allows pairs of ant agents to compete against each other.
-To win, the agent has to push the opponent out of the ring. If the agent's body touch the ground, it will reduce hp
-until death.
+To win, the agent has to push the opponent out of the ring. Every agent has 100 hp . Each step, If the agent's body
+touches the ground, its hp will be reduced by 1.The agent whose hp becomes 0 will be eliminated.
 <div align=center>
 <img src="assets/ant_sumo.gif" align="center" width="600"/>
 </div> 
 
 #### Ant Battle
 
-Ant Battle is an expanded environment of Ant Sumo. It supports more than two agents compete against with
-each other. The battle ring radius will shrink, the agent which out of the ring will be eliminated.
+Ant Battle is an expanded environment of Ant Sumo. It supports more than two agents competing against with
+each other. The battle ring radius will shrink, the agent going out of the ring will be eliminated.
 <div align=center>
 <img src="assets/ant_battle.gif" align="center" width="600"/>
 </div>  
 
 ### Self-Play Training
 
-To Train your policy for tasks, for example:
+To train your policy for tasks, for example:
 
 ```bash
 # run self-play training for Ant Sumo task
@@ -83,10 +84,10 @@ follow [IsaacGymEnvs Configuration and command line arguments](https://github.co
 Other training arguments follow [rl_games config parameters](https://github.com/Denys88/rl_games#config-parameters),
 you can change them in `timechamber/tasks/train/*.yaml`. There are some specific arguments for self-play training:
 
-- `num_agents`: Set the agents number for Ant Battle environment, it should larger than 1.
+- `num_agents`: Set the number of agents for Ant Battle environment, it should be larger than 1.
 - `op_checkpoint`: Set to path to the checkpoint to load initial opponent agent policy.
   If it's empty, opponent agent will use random policy.
-- `update_win_rate`: Win_rate threshold to add the current policy to opponent's player_pool.
+- `update_win_rate`: Win_rate threshold to add the current policy to opponent's player pool.
 - `player_pool_length`: The max size of player pool, following FIFO rules.
 - `games_to_check`: Warm up for training, the player pool won't be updated until the current policy plays such number of
   games.
@@ -99,25 +100,30 @@ To evaluate your policies, for example:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/nn/policy_1.pth'
+python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/policy_dir/policy_1.pth'
 ```
 
 You can set the opponent agent policy using `op_checkpoint`. If it's empty, the opponent agent will use the same policy
 as `checkpoint`.  
-We use vectorized models to accelerate the evaluation of policies. Put policies into dir, let them compete with each
+We use vectorized models to accelerate the evaluation of policies. Put policies into checkpoint dir, let them compete
+with each
 other in parallel:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/nn/policy_dir' player_pool_type=vectorized
+python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/policy_dir' player_pool_type=vectorized
 ```
 
 There are some specific arguments for self-play evaluation, you can change them in `timechamber/tasks/train/*.yaml`:
 
 - `games_num`: Total episode number of evaluation.
-- `record_elo`: Set `True` to record the elo rating of your policies, after evaluation, you can check the `elo.jpg` in
+- `record_elo`: Set `True` to record the ELO rating of your policies, after evaluation, you can check the `elo.jpg` in
   your checkpoint dir.
-- `init_elo`: Initial elo rating of each policy.
+
+<div align=center>
+  <img src="assets/elo.jpg" align="center" width="400"/>
+</div>
+- `init_elo`: Initial ELO rating of each policy.
 
 ### Building Your Own Task
 
