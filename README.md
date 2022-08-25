@@ -19,8 +19,8 @@ TimeChamber is developed with the following key features:
 - **Prioritized Fictitious Self-Play Benchmark**: We implement a classic PPO-self-play algorithm on top
   of [rl_games](https://github.com/Denys88/rl_games).
   We provide a prioritized player pool to avoid cycles and improve the diversity of training policy.
-- **Competitive Multi-Agent Tasks**: We introduce some competitive multi-agent tasks(e.g.,[Ant Sumo](#Ant Sumo), [Ant
-  Battle](#Ant Battle)).
+- **Competitive Multi-Agent Tasks**: We introduce some competitive multi-agent tasks(e.g.,Ant Sumo,Ant
+  Battle).
   These tasks test the efficiency of our self-play framework. After days of training,our agent can discover some
   physical skills like pulling, jumping,etc.
 
@@ -114,7 +114,7 @@ python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/nn/polic
 
 There are some specific arguments for self-play evaluation, you can change them in `timechamber/tasks/train/*.yaml`:
 
-- `games_num`: Total episode numbers of evaluation.
+- `games_num`: Total episode number of evaluation.
 - `record_elo`: Set `True` to record the elo rating of your policies, after evaluation, you can check the `elo.jpg` in
   your checkpoint dir.
 - `init_elo`: Initial elo rating of each policy.
