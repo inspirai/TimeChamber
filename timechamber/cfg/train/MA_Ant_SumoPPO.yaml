@@ -38,7 +38,6 @@ params:
   player_pool_length: 4
   games_to_check: 400
   max_update_steps: 5000
-
   device: ${...rl_device}
   config:
     name: ${resolve_default:MA_Ant_1v1,${....experiment}}
@@ -75,3 +74,7 @@ params:
     clip_value: True
     use_smooth_clamp: True
     bounds_loss_coef: 0.0000
+    player:
+      games_num: 2000
+      record_elo: True
+      init_elo: 400

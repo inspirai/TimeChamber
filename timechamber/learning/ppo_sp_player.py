@@ -72,13 +72,13 @@ class SPPlayer(BasePlayer):
         self.policy_timestep = []
         self.policy_op_timestep = []
         self.params = params
-        self.record_elo = True
+        self.record_elo = self.player_config.get('record_elo', False)
+        self.init_elo = self.player_config.get('init_elo', 400)
         self.num_actors = params['config']['num_actors']
         self.player_pool_type = params['player_pool_type']
         self.player_pool = None
         self.op_player_pool = None
         self.num_opponents = params['num_agents'] - 1
-        self.games_num = 40000
         self.max_steps = 1000
         self.update_op_num = 0
         self.restore_op(params['op_load_path'])
@@ -92,14 +92,16 @@ class SPPlayer(BasePlayer):
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
                 self.policy_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
-                new_player = SinglePlayer(player_idx=policy_check_checkpoint, model=model, device=self.device,
-                                          rating=400, obs_batch_len=self.num_actors * self.num_opponents)
+                player_idx = int(policy_check_checkpoint.split('_', 1)[1].split('.', 1)[0]) - 1
+                new_player = SinglePlayer(player_idx=player_idx, model=model, device=self.device,
+                                          rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 self.player_pool.add_player(new_player)
         else:
             self.player_pool = self._build_player_pool(params=self.params, player_num=1)
+            self.policy_timestep.append(os.path.getmtime(load_dir))
             model = self.load_model(load_dir)
             new_player = SinglePlayer(player_idx=0, model=model, device=self.device,
-                                      rating=400, obs_batch_len=self.num_actors * self.num_opponents)
+                                      rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
             self.player_pool.add_player(new_player)
         self._alloc_env_indices()
 
@@ -109,11 +111,13 @@ class SPPlayer(BasePlayer):
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
                 self.policy_op_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
-                new_player = SinglePlayer(player_idx=policy_check_checkpoint, model=model, device=self.device,
-                                          rating=400, obs_batch_len=self.num_actors * self.num_opponents)
+                player_idx = int(policy_check_checkpoint.split('_', 1)[1].split('.', 1)[0]) - 1
+                new_player = SinglePlayer(player_idx=player_idx, model=model, device=self.device,
+                                          rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 self.op_player_pool.add_player(new_player)
         else:
             self.op_player_pool = self._build_player_pool(params=self.params, player_num=1)
+            self.policy_op_timestep.append(os.path.getmtime(load_dir))
             model = self.load_model(load_dir)
             new_player = SinglePlayer(player_idx=0, model=model, device=self.device,
                                       rating=400, obs_batch_len=self.num_actors * self.num_opponents)
@@ -284,11 +288,11 @@ class SPPlayer(BasePlayer):
         x_op = np.array(self.policy_op_timestep)
         y_op = np.arange(len(self.op_player_pool.players))
         for player in self.player_pool.players:
-            idx = int(player.player_idx.split('_', 1)[1].split('.', 1)[0]) - 1
+            idx = player.player_idx
             # print(player.player_idx, player.rating)
             y[idx] = player.rating
         for player in self.op_player_pool.players:
-            idx = int(player.player_idx.split('_', 1)[1].split('.', 1)[0]) - 1
+            idx = player.player_idx
             # print(player.player_idx, player.rating)
             y_op[idx] = player.rating
         l1 = plt.plot(x, y, 'b--', label='policy')

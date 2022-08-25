@@ -74,3 +74,7 @@ params:
     clip_value: True
     use_smooth_clamp: True
     bounds_loss_coef: 0.0000
+    player:
+      games_num: 2000
+      record_elo: True
+      init_elo: 400

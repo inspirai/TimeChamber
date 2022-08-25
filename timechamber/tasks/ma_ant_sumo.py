@@ -90,7 +90,7 @@ class MA_Ant_Sumo(MA_VecTask):
         if self.viewer is not None:
             for env in self.envs:
                 self._add_circle_borderline(env)
-            cam_pos = gymapi.Vec3(15.0, 0.0, 3.4)
+            cam_pos = gymapi.Vec3(15.0, 0.0, 3.0)
             cam_target = gymapi.Vec3(10.0, 0.0, 0.0)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
