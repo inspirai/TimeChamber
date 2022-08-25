@@ -109,7 +109,7 @@ other in parallel:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/nn/policy_dir'
+python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/nn/policy_dir' player_pool_type=vectorized
 ```
 
 There are some specific arguments for self-play evaluation, you can change them in `timechamber/tasks/train/*.yaml`:
