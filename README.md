@@ -20,6 +20,11 @@ TimeChamber is developed with the following key features:
 - **Prioritized Fictitious Self-Play Benchmark**: We implement a classic PPO self-play algorithm on top
   of [rl_games](https://github.com/Denys88/rl_games), with a prioritized player pool to avoid cycles and improve the
   diversity of training policy.
+
+<div align=center>
+<img src="assets/images/algorithm.jpg" align="center" width="600"/>
+</div> 
+
 - **Competitive Multi-Agent Tasks**: We introduce two competitive multi-agent tasks(e.g.,Ant Sumo,Ant
   Battle) as examples.
   The efficiency of our self-play framework has been tested on these tasks. After days of training,our agent can
@@ -45,7 +50,9 @@ pip install -e .
 
 ### Tasks
 
-Source code for tasks can be found in  `timechamber/tasks`, more interesting tasks will come soon.
+Source code for tasks can be found in  `timechamber/tasks`,The detailed settings of state/action/reward are
+in [here](./docs/environments.md).
+More interesting tasks will come soon.
 
 #### Ant Sumo
 
@@ -53,7 +60,7 @@ Ant Sumo is a 3D environment with simulated physics that allows pairs of ant age
 To win, the agent has to push the opponent out of the ring. Every agent has 100 hp . Each step, If the agent's body
 touches the ground, its hp will be reduced by 1.The agent whose hp becomes 0 will be eliminated.
 <div align=center>
-<img src="assets/ant_sumo.gif" align="center" width="600"/>
+<img src="assets/images/ant_sumo.gif" align="center" width="600"/>
 </div> 
 
 #### Ant Battle
@@ -61,7 +68,7 @@ touches the ground, its hp will be reduced by 1.The agent whose hp becomes 0 wil
 Ant Battle is an expanded environment of Ant Sumo. It supports more than two agents competing against with
 each other. The battle ring radius will shrink, the agent going out of the ring will be eliminated.
 <div align=center>
-<img src="assets/ant_battle.gif" align="center" width="600"/>
+<img src="assets/images/ant_battle.gif" align="center" width="600"/>
 </div>  
 
 ### Self-Play Training
@@ -121,8 +128,9 @@ There are some specific arguments for self-play evaluation, you can change them 
   your checkpoint dir.
 
 <div align=center>
-  <img src="assets/elo.jpg" align="center" width="400"/>
+  <img src="assets/images/elo.jpg" align="center" width="400"/>
 </div>
+
 - `init_elo`: Initial ELO rating of each policy.
 
 ### Building Your Own Task

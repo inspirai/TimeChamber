@@ -1,31 +1,3 @@
-# Copyright (c) 2018-2021, NVIDIA Corporation
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-#    list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-#    contributors may be used to endorse or promote products derived from
-#    this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 from typing import Tuple
 import numpy as np
 import os
@@ -116,8 +88,6 @@ class MA_Ant_Sumo(MA_VecTask):
         print(f'dof:{self.dof_state.shape}')
         self.dof_pos = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_dof, 0]
         self.dof_pos_op = self.dof_state.view(self.num_envs, -1, 2)[:, self.num_dof:2 * self.num_dof, 0]
-        # print(self.dof_pos)
-        # print(self.dof_pos_op)
         self.dof_vel = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_dof, 1]
         self.dof_vel_op = self.dof_state.view(self.num_envs, -1, 2)[:, self.num_dof:2 * self.num_dof, 1]
 
@@ -161,7 +131,6 @@ class MA_Ant_Sumo(MA_VecTask):
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
 
         self._create_ground_plane()
-        # self._create_height_field()
         print(f'num envs {self.num_envs} env spacing {self.cfg["env"]["envSpacing"]}')
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
 
@@ -180,7 +149,6 @@ class MA_Ant_Sumo(MA_VecTask):
                 lines.append(end_point)
         lines = np.array(lines, dtype=np.float32) * self.borderline_space
         colors = np.array([[1, 0, 0]] * int(len(lines) / 2), dtype=np.float32)
-        # print(f'border_lines:{lines.size},{colors.size}')
         self.gym.add_lines(self.viewer, env, int(len(lines) / 2), lines, colors)
 
     def _create_ground_plane(self):
@@ -211,10 +179,6 @@ class MA_Ant_Sumo(MA_VecTask):
 
         ant_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         ant_asset_op = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
-        box_asset_options = gymapi.AssetOptions()
-        box_asset_options.density = 10.0
-        box_asset = self.gym.create_box(self.sim, self.borderline_space, self.borderline_space, 0.5, box_asset_options)
-
         dof_props = self.gym.get_asset_dof_properties(ant_asset)
 
         self.num_dof = self.gym.get_asset_dof_count(ant_asset)
@@ -274,10 +238,6 @@ class MA_Ant_Sumo(MA_VecTask):
             self.gym.set_actor_dof_properties(env_ptr, ant_handle_op, dof_props)
 
             self.actor_indices_op.append(actor_index_op)
-            # forces = self.gym.get_env_rigid_contact_forces(env_ptr)
-            # num_sensors = self.gym.get_actor_force_sensor_count(env_ptr, ant_handle)
-            # print(f'num_sensors:{num_sensors}')
-            # print(forces)
             for j in range(self.num_bodies):
                 self.gym.set_rigid_body_color(
                     env_ptr, ant_handle, j, gymapi.MESH_VISUAL, gymapi.Vec3(0.97, 0.38, 0.06))
@@ -382,18 +342,6 @@ class MA_Ant_Sumo(MA_VecTask):
         env_ids_int32 = (torch.cat((self.actor_indices[env_ids], self.actor_indices_op[env_ids]))).to(dtype=torch.int32)
         agent_env_ids = expand_env_ids(env_ids, 2)
 
-        # self.initial_root_states[agent_env_ids, :2] = self.initial_root_states[agent_env_ids, :2].uniform_(
-        #     -self.borderline_space, self.borderline_space)
-        # self.root_states[agent_env_ids] = self.initial_root_states[agent_env_ids]
-        # new_pos = torch.arange(self.num_envs * 2, device=self.device)
-        # rand_bool = torch.randint(0, 2, (self.num_envs,), device=self.device).bool().view(-1, 1).expand(self.num_envs,
-        #                                                                                                 2)
-        # new_pos += torch.where(rand_bool,
-        #                        torch.tensor([1, -1], device=self.device, dtype=torch.int64).expand(self.num_envs, 2),
-        #                        torch.zeros((self.num_envs, 2), dtype=torch.int64, device=self.device)).view(-1)
-
-        # self.root_states[agent_env_ids] = self.initial_root_states[new_pos][agent_env_ids]
-
         rand_angle = torch.rand((len(env_ids),), device=self.device) * torch.pi * 2
 
         rand_pos = torch.ones((len(agent_env_ids), 2), device=self.device) * (
@@ -404,10 +352,6 @@ class MA_Ant_Sumo(MA_VecTask):
         rand_pos[1::2, 0] *= torch.cos(rand_angle + torch.pi)
         rand_pos[1::2, 1] *= torch.sin(rand_angle + torch.pi)
         rand_floats = torch_rand_float(-1.0, 1.0, (len(agent_env_ids), 3), device=self.device)
-        # rand_rotation = quat_mul(
-        #     quat_from_angle_axis(rand_floats[:, 0] * np.pi, self.z_unit_tensor[agent_env_ids]),
-        #     quat_from_angle_axis(rand_floats[:, 1] * np.pi,
-        #                          self.x_unit_tensor[agent_env_ids]))
         rand_rotation = quat_from_angle_axis(rand_floats[:, 1] * np.pi, self.z_unit_tensor[agent_env_ids])
         rand_rotation2 = quat_from_angle_axis(rand_floats[:, 2] * np.pi, self.z_unit_tensor[agent_env_ids])
         self.root_states[agent_env_ids] = self.initial_root_states[agent_env_ids]
@@ -435,15 +379,10 @@ class MA_Ant_Sumo(MA_VecTask):
         self.actions = actions.clone().to(self.device)
         self.actions = torch.cat((self.actions[:self.num_envs], self.actions[self.num_envs:]), dim=-1)
 
-        # reshape [num_envs * num_agents, num_actions] to [num_envs, num_agents * num_actions] print(f'action_size{
-        # self.actions.shape}') self.actions = self.actions.reshape(self.num_envs, self.num_agents *
-        # self.num_actions) print(self.actions) targets = self.actions + self.initial_dof_pos.repeat_interleave(
-        # self.num_agents, dim=0).repeat_interleave(2, dim=1)
+        # reshape [num_envs * num_agents, num_actions] to [num_envs, num_agents * num_actions]
         targets = self.actions
-        # print(self.obs_buf_op)
 
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(targets))
-        # self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(forces))
 
     def post_physics_step(self):
         self.progress_buf += 1
@@ -456,8 +395,6 @@ class MA_Ant_Sumo(MA_VecTask):
             self.reset_idx(env_ids)
 
         self.compute_observations()
-        # print(self.obs_buf)
-        # print(self.obs_buf_op)
         self.compute_reward(self.actions)
         self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
 
@@ -491,7 +428,6 @@ class MA_Ant_Sumo(MA_VecTask):
 def expand_env_ids(env_ids, n_agents):
     # type: (Tensor, int) -> Tensor
     device = env_ids.device
-    # print(f'nanget:{n_agents}')
     agent_env_ids = torch.zeros((n_agents * len(env_ids)), device=device, dtype=torch.long)
     for idx in range(n_agents):
         agent_env_ids[idx::n_agents] = env_ids * n_agents + idx
@@ -542,10 +478,8 @@ def compute_ant_reward(
 
     hp -= (obs_buf[:, 2] < termination_height) * hp_decay_scale
     hp_op -= (obs_buf_op[:, 2] < termination_height) * hp_decay_scale
-    # print(hp, hp_op)
     is_out = torch.sum(torch.square(obs_buf[:, 0:2]), dim=-1) >= borderline_space ** 2
     is_out_op = torch.sum(torch.square(obs_buf_op[:, 0:2]), dim=-1) >= borderline_space ** 2
-    #
     is_out = is_out | (hp <= 0)
     is_out_op = is_out_op | (hp_op <= 0)
     # reset agents
@@ -568,9 +502,7 @@ def compute_ant_reward(
     dof_at_limit_cost = torch.sum(obs_buf[:, 13:21] > 0.99, dim=-1) * joints_at_limit_cost_scale
     push_reward = -push_scale * torch.exp(-torch.linalg.norm(obs_buf_op[:, :2], dim=-1))
     action_cost_penalty = torch.sum(torch.square(torques), dim=1) * action_cost_scale
-    # print("torques:", torques[0, 2])
     not_move_penalty = -10 * torch.exp(-torch.sum(torch.abs(torques), dim=1))
-    # print(f'action:...{action_cost_penalty.shape}')
     dense_reward = move_reward + dof_at_limit_cost + push_reward + action_cost_penalty + not_move_penalty
     total_reward = win_reward + lose_penalty + draw_penalty + dense_reward * dense_reward_scale
 
@@ -590,7 +522,6 @@ def compute_ant_observations(
 ):
     # type: (Tensor,Tensor,Tensor,Tensor,Tensor,Tensor,float,float)->Tensor
     dof_pos_scaled = unscale(dof_pos, dof_limits_lower, dof_limits_upper)
-    # print("dof pos:", dof_pos[0, :])
     obs = torch.cat(
         (root_states[:, :13], dof_pos_scaled, dof_vel * dof_vel_scale, root_states_op[:, :7],
          root_states[:, :2] - root_states_op[:, :2], torch.unsqueeze(root_states[:, 2] < termination_height, -1),
