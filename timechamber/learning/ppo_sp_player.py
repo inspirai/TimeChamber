@@ -63,13 +63,19 @@ class SPPlayer(BasePlayer):
         if os.path.isdir(load_dir):
             self.player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             print('dir:', load_dir)
+            sorted_players = []
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
+                self.policy_timestep.append(model_timestep)
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
-                self.policy_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
-                player_idx = int(policy_check_checkpoint.split('_', 1)[1].split('.', 1)[0]) - 1
-                new_player = SinglePlayer(player_idx=player_idx, model=model, device=self.device,
+                new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
-                self.player_pool.add_player(new_player)
+                sorted_players.append(new_player)
+            sorted_players.sort(key=lambda player: player.player_idx)
+            for idx, player in enumerate(sorted_players):
+                player.player_idx = idx
+                self.player_pool.add_player(player)
+            self.policy_timestep.sort()
         else:
             self.player_pool = self._build_player_pool(params=self.params, player_num=1)
             self.policy_timestep.append(os.path.getmtime(load_dir))
@@ -82,13 +88,19 @@ class SPPlayer(BasePlayer):
     def restore_op(self, load_dir):
         if os.path.isdir(load_dir):
             self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
+            sorted_players = []
             for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
-                self.policy_op_timestep.append(os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint)))
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
+                self.policy_op_timestep.append(model_timestep)
                 model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
-                player_idx = int(policy_check_checkpoint.split('_', 1)[1].split('.', 1)[0]) - 1
-                new_player = SinglePlayer(player_idx=player_idx, model=model, device=self.device,
+                new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
-                self.op_player_pool.add_player(new_player)
+                sorted_players.append(new_player)
+            sorted_players.sort(key=lambda player: player.player_idx)
+            for idx, player in enumerate(sorted_players):
+                player.player_idx = idx
+                self.op_player_pool.add_player(player)
+            self.policy_op_timestep.sort()
         else:
             self.op_player_pool = self._build_player_pool(params=self.params, player_num=1)
             self.policy_op_timestep.append(os.path.getmtime(load_dir))
@@ -247,12 +259,9 @@ class SPPlayer(BasePlayer):
             self._plot_elo_curve()
 
     def _plot_elo_curve(self):
-        self.policy_op_timestep.sort()
-        self.policy_timestep.sort()
         for idx in range(1, len(self.policy_op_timestep)):
             self.policy_op_timestep[idx] -= self.policy_op_timestep[0]
             self.policy_op_timestep[idx] /= 3600 * 24
-            print(self.policy_op_timestep[idx])
         for idx in range(1, len(self.policy_timestep)):
             self.policy_timestep[idx] -= self.policy_timestep[0]
             self.policy_timestep[idx] /= 3600 * 24
@@ -276,7 +285,7 @@ class SPPlayer(BasePlayer):
         plt.xlabel('timestep/days')
         plt.ylabel('ElO')
         plt.legend()
-        plt.savefig(self.params['load_path'] + '../elo.jpg')
+        plt.savefig(self.params['load_path'] + '/../elo.jpg')
 
     def get_action(self, obs, is_determenistic=False, is_op=False):
         if self.has_batch_dimension == False:
