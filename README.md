@@ -5,7 +5,7 @@
 **TimeChamber** is a large scale self-play framework running on parallel simulation.
 Running self-play algorithms always need lots of hardware resources, especially on 3D physically simulated
 environments.
-We provide a self-play framework that can achieve fast training and evaluation with very limited hardware resources.
+We provide a self-play framework that can achieve fast training and evaluation with **ONLY ONE GPU**.
 TimeChamber is developed with the following key features:
 
 - **Parallel Simulation**: TimeChamber is built within [Isaac Gym](https://developer.nvidia.com/isaac-gym). Isaac Gym is
@@ -77,12 +77,12 @@ To train your policy for tasks, for example:
 
 ```bash
 # run self-play training for Ant Sumo task
-python train.py task=MA_Ant_Sumo
+python train.py task=MA_Ant_Sumo headless=True
 ```
 
 ```bash
 # run self-play training for Ant Battle task
-python train.py task=MA_Ant_Battle
+python train.py task=MA_Ant_Battle headless=True
 ```
 
 Key arguments to the training script
@@ -107,7 +107,7 @@ To evaluate your policies, for example:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/policy_dir/policy_1.pth'
+python train.py task=MA_Ant_Sumo test=True headless=True checkpoint='models/ant_sumo/policy.pth'
 ```
 
 You can set the opponent agent policy using `op_checkpoint`. If it's empty, the opponent agent will use the same policy
@@ -118,7 +118,7 @@ other in parallel:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True checkpoint='runs/MA_Ant_Sumo/policy_dir' player_pool_type=vectorized
+python train.py task=MA_Ant_Sumo test=True headless=True checkpoint='models/ant_sumo' player_pool_type=vectorized
 ```
 
 There are some specific arguments for self-play evaluation, you can change them in `timechamber/tasks/train/*.yaml`:
@@ -173,7 +173,7 @@ If you use timechamber in your research please use the following citation:
 
 ````
 @misc{InspirAI,
-  author = {ZeldaHuang,Flood Sung},
+  author = {Huang Ziming,Flood Sung},
   title = {TimeChamber: A Large Scale Self-Play Framework via Parallel Techniques},
   year = {2022},
   publisher = {GitHub},
