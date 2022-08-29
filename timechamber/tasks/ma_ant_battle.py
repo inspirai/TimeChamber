@@ -40,10 +40,7 @@ class MA_Ant_Battle(MA_VecTask):
         self.cfg["env"]["numActions"] = 8
         self.borderline_space = cfg["env"]["borderlineSpace"]
         self.borderline_space_unit = self.borderline_space / self.max_episode_length
-        self.ant_body_colors = [gymapi.Vec3(0.97, 0.38, 0.06), gymapi.Vec3(0.24, 0.38, 0.06),
-                                gymapi.Vec3(0.56, 0.85, 0.25), gymapi.Vec3(0.44, 0.38, 0.68),
-                                gymapi.Vec3(0.14, 0.97, 0.24), gymapi.Vec3(0.63, 0.2, 0.87),
-                                gymapi.Vec3(0.52, 0.13, 0.23), gymapi.Vec3(0.26, 0.78, 0.98), ]
+        self.ant_body_colors = [gymapi.Vec3(*rgb_arr) for rgb_arr in self.cfg["env"]["color"]]
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
                          headless=headless)

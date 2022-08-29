@@ -8,6 +8,8 @@ env:
   #  numEnvs: ${...num_envs}
   numEnvs: ${resolve_default:4096,${...num_envs}}
   numAgents: ${...num_agents}
+  # rgb color of Ant body
+  color: [ [ 0.97, 0.38, 0.06 ],[ 0.24, 0.38, 0.06 ],[ 0.56, 0.85, 0.25 ],[ 0.56, 0.85, 0.25 ],[ 0.14, 0.97, 0.24 ],[ 0.63, 0.2, 0.87 ] ]
   envSpacing: 6
   borderlineSpace: 3
   episodeLength: 1000
