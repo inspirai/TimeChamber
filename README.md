@@ -1,4 +1,4 @@
-# TimeChamber: A ***Massively parallel***  Large Scale Self-Play Framework
+# TimeChamber: A Massively Parallel Large Scale Self-Play Framework
 
 ****
 
@@ -174,8 +174,8 @@ If you use timechamber in your research please use the following citation:
 
 ````
 @misc{InspirAI,
-  author = {Huang Ziming,Flood Sung,Wu Yutong},
-  title = {TimeChamber: A Large Scale Self-Play Framework via Parallel Techniques},
+  author = {Huang Ziming,Wu Yutong,Flood Sung},
+  title = {TimeChamber: A Massively Parallel Large Scale Self-Play Framework},
   year = {2022},
   publisher = {GitHub},
   journal = {GitHub repository},
