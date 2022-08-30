@@ -180,4 +180,5 @@ If you use timechamber in your research please use the following citation:
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/inspirai/TimeChamber}},
+  author = {Huang Ziming,Flood Sung,Wu Yutong},
 }
