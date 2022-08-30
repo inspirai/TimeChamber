@@ -55,7 +55,6 @@ class SPPlayer(BasePlayer):
         self.num_opponents = params['num_agents'] - 1
         self.max_steps = 1000
         self.update_op_num = 0
-        self.restore_op(params['op_load_path'])
         self.players_per_env = []
         self.elo = MultiElo()
 
@@ -83,6 +82,8 @@ class SPPlayer(BasePlayer):
             new_player = SinglePlayer(player_idx=0, model=model, device=self.device,
                                       rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
             self.player_pool.add_player(new_player)
+        self.restore_op(self.params['op_load_path'])
+        self._norm_policy_timestep()
         self._alloc_env_indices()
 
     def restore_op(self, load_dir):
@@ -259,13 +260,6 @@ class SPPlayer(BasePlayer):
             self._plot_elo_curve()
 
     def _plot_elo_curve(self):
-        for idx in range(1, len(self.policy_op_timestep)):
-            self.policy_op_timestep[idx] -= self.policy_op_timestep[0]
-            self.policy_op_timestep[idx] /= 3600 * 24
-        for idx in range(1, len(self.policy_timestep)):
-            self.policy_timestep[idx] -= self.policy_timestep[0]
-            self.policy_timestep[idx] /= 3600 * 24
-        self.policy_timestep[0] = self.policy_op_timestep[0] = 0
         x = np.array(self.policy_timestep)
         y = np.arange(len(self.player_pool.players))
         x_op = np.array(self.policy_op_timestep)
@@ -278,9 +272,13 @@ class SPPlayer(BasePlayer):
             idx = player.player_idx
             # print(player.player_idx, player.rating)
             y_op[idx] = player.rating
-        l1 = plt.plot(x, y, 'b--', label='policy')
-        l2 = plt.plot(x_op, y_op, 'r--', label='policy_op')
-        plt.plot(x, y, 'b^-', x_op, y_op, 'ro-')
+        if self.params['load_path'] != self.params['op_load_path']:
+            l1 = plt.plot(x, y, 'b--', label='policy')
+            l2 = plt.plot(x_op, y_op, 'r--', label='policy_op')
+            plt.plot(x, y, 'b^-', x_op, y_op, 'ro-')
+        else:
+            l1 = plt.plot(x, y, 'b--', label='policy')
+            plt.plot(x, y, 'b^-')
         plt.title('ELO Curve')
         plt.xlabel('timestep/days')
         plt.ylabel('ElO')
@@ -322,6 +320,19 @@ class SPPlayer(BasePlayer):
             return rescale_actions(self.actions_low, self.actions_high, torch.clamp(current_action, -1.0, 1.0))
         else:
             return current_action
+
+    def _norm_policy_timestep(self):
+        self.policy_op_timestep.sort()
+        self.policy_timestep.sort()
+        for idx in range(1, len(self.policy_op_timestep)):
+            self.policy_op_timestep[idx] -= self.policy_op_timestep[0]
+            self.policy_op_timestep[idx] /= 3600 * 24
+        for idx in range(1, len(self.policy_timestep)):
+            self.policy_timestep[idx] -= self.policy_timestep[0]
+            self.policy_timestep[idx] /= 3600 * 24
+        self.policy_timestep[0] = 0
+        if len(self.policy_op_timestep):
+            self.policy_op_timestep[0] = 0
 
     def env_reset(self, env):
         obs = env.reset()
