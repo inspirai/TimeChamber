@@ -31,7 +31,7 @@ setup(
     name="timechamber",
     author="ZeldaHuang",
     version="0.0.1",
-    description="Large scale self-play framework via parallel techniques",
+    description="A Massively parallel Large Scale Self-Play Framework",
     keywords=["robotics", "rl"],
     include_package_data=True,
     python_requires=">=3.6.*",

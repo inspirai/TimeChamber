@@ -1,4 +1,4 @@
-# TimeChamber: A Large Scale Self-Play Framework via Parallel Techniques
+# TimeChamber: A ***Massively parallel***  Large Scale Self-Play Framework
 
 ****
 
@@ -25,7 +25,8 @@ TimeChamber is developed with the following key features:
 <img src="assets/images/algorithm.jpg" align="center" width="600"/>
 </div> 
 
-- **Competitive Multi-Agent Tasks**: We introduce two competitive multi-agent tasks(e.g.,Ant Sumo,Ant
+- **Competitive Multi-Agent Tasks**: Inspired by [OpenAI RoboSumo](https://github.com/openai/robosumo), we introduce two
+  competitive multi-agent tasks(e.g.,Ant Sumo,Ant
   Battle) as examples.
   The efficiency of our self-play framework has been tested on these tasks. After days of training,our agent can
   discover some interesting
@@ -173,7 +174,7 @@ If you use timechamber in your research please use the following citation:
 
 ````
 @misc{InspirAI,
-  author = {Huang Ziming,Flood Sung},
+  author = {Huang Ziming,Flood Sung,Wu Yutong},
   title = {TimeChamber: A Large Scale Self-Play Framework via Parallel Techniques},
   year = {2022},
   publisher = {GitHub},
