@@ -283,7 +283,8 @@ class SPPlayer(BasePlayer):
         plt.xlabel('timestep/days')
         plt.ylabel('ElO')
         plt.legend()
-        plt.savefig(self.params['load_path'] + '/../elo.jpg')
+        parent_path = os.path.dirname(self.params['load_path'])
+        plt.savefig(os.path.join(parent_path, 'elo.jpg'))
 
     def get_action(self, obs, is_determenistic=False, is_op=False):
         if self.has_batch_dimension == False:
