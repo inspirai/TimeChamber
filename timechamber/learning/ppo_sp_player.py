@@ -60,17 +60,19 @@ class SPPlayer(BasePlayer):
 
     def restore(self, load_dir):
         if os.path.isdir(load_dir):
-            self.player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             print('dir:', load_dir)
             sorted_players = []
-            for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
-                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
+            for idx, policy_checkpoint in enumerate(os.listdir(load_dir)):
+                if not str(policy_checkpoint).endswith('.pth'):
+                    continue
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_checkpoint))
                 self.policy_timestep.append(model_timestep)
-                model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
+                model = self.load_model(load_dir + '/' + str(policy_checkpoint))
                 new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 sorted_players.append(new_player)
             sorted_players.sort(key=lambda player: player.player_idx)
+            self.player_pool = self._build_player_pool(params=self.params, player_num=len(sorted_players))
             for idx, player in enumerate(sorted_players):
                 player.player_idx = idx
                 self.player_pool.add_player(player)
@@ -88,16 +90,18 @@ class SPPlayer(BasePlayer):
 
     def restore_op(self, load_dir):
         if os.path.isdir(load_dir):
-            self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             sorted_players = []
-            for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
-                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
+            for idx, policy_checkpoint in enumerate(os.listdir(load_dir)):
+                if not str(policy_checkpoint).endswith('.pth'):
+                    continue
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_checkpoint))
                 self.policy_op_timestep.append(model_timestep)
-                model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
+                model = self.load_model(load_dir + '/' + str(policy_checkpoint))
                 new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 sorted_players.append(new_player)
             sorted_players.sort(key=lambda player: player.player_idx)
+            self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(sorted_players))
             for idx, player in enumerate(sorted_players):
                 player.player_idx = idx
                 self.op_player_pool.add_player(player)
@@ -127,14 +131,7 @@ class SPPlayer(BasePlayer):
             player.reset_envs()
 
     def _build_player_pool(self, params, player_num):
-
-        if self.player_pool_type == 'multi_thread':
-            return PFSPPlayerProcessPool(max_length=player_num,
-                                         device=self.device)
-        elif self.player_pool_type == 'multi_process':
-            return PFSPPlayerThreadPool(max_length=player_num,
-                                        device=self.device)
-        elif self.player_pool_type == 'vectorized':
+        if self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponents
             vector_model_config['population_size'] = player_num

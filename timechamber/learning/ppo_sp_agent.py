@@ -54,13 +54,7 @@ class SPAgent(a2c_continuous.A2CAgent):
         assert self.num_actors % self.max_his_player_num == 0
 
     def _build_player_pool(self, params):
-        if self.player_pool_type == 'multi_thread':
-            return PFSPPlayerProcessPool(max_length=self.max_his_player_num,
-                                         device=self.device)
-        elif self.player_pool_type == 'multi_process':
-            return PFSPPlayerThreadPool(max_length=self.max_his_player_num,
-                                        device=self.device)
-        elif self.player_pool_type == 'vectorized':
+        if self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponent_agents
             vector_model_config['population_size'] = self.max_his_player_num
