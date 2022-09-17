@@ -57,7 +57,7 @@ class MA_Ant_Sumo(MA_VecTask):
 
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
-                         headless=headless)
+                         headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         if self.viewer is not None:
             for env in self.envs:
@@ -129,7 +129,15 @@ class MA_Ant_Sumo(MA_VecTask):
     def create_sim(self):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, 'z')
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
-
+        lines = []
+        borderline_height = 0.01
+        for height in range(20):
+            for angle in range(360):
+                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height * height]
+                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
+                lines.append(begin_point)
+                lines.append(end_point)
+        self.lines = np.array(lines, dtype=np.float32)
         self._create_ground_plane()
         print(f'num envs {self.num_envs} env spacing {self.cfg["env"]["envSpacing"]}')
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
@@ -139,17 +147,8 @@ class MA_Ant_Sumo(MA_VecTask):
             self.apply_randomizations(self.randomization_params)
 
     def _add_circle_borderline(self, env):
-        lines = []
-        borderline_height = 0.01
-        for height in range(20):
-            for angle in range(360):
-                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height * height]
-                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
-                lines.append(begin_point)
-                lines.append(end_point)
-        lines = np.array(lines, dtype=np.float32) * self.borderline_space
-        colors = np.array([[1, 0, 0]] * int(len(lines) / 2), dtype=np.float32)
-        self.gym.add_lines(self.viewer, env, int(len(lines) / 2), lines, colors)
+        colors = np.array([[1, 0, 0]] * int(len(self.lines) / 2), dtype=np.float32)
+        self.gym.add_lines(self.viewer, env, int(len(self.lines) / 2), self.lines, colors)
 
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()

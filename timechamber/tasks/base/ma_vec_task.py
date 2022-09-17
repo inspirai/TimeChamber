@@ -46,10 +46,14 @@ import sys
 import abc
 from .vec_task import Env
 
+SCREEN_CAPTURE_RESOLUTION = (1027, 768)
+
 
 class MA_VecTask(Env):
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
 
-    def __init__(self, config, rl_device, sim_device, graphics_device_id, headless):
+    def __init__(self, config, rl_device, sim_device, graphics_device_id, headless,
+                 virtual_screen_capture: bool = False, force_render: bool = False):
         """Initialise the `MA_VecTask`.
 
         Args:
@@ -59,7 +63,13 @@ class MA_VecTask(Env):
             headless: Set to False to disable viewer rendering.
         """
         super().__init__(config, rl_device, sim_device, graphics_device_id, headless)
-
+        self.virtual_screen_capture = virtual_screen_capture
+        self.virtual_display = None
+        if self.virtual_screen_capture:
+            from pyvirtualdisplay.smartdisplay import SmartDisplay
+            self.virtual_display = SmartDisplay(size=SCREEN_CAPTURE_RESOLUTION)
+            self.virtual_display.start()
+        self.force_render = force_render
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
             self.physics_engine = gymapi.SIM_PHYSX
@@ -222,7 +232,8 @@ class MA_VecTask(Env):
 
         # step physics and render each frame
         for i in range(self.control_freq_inv):
-            self.render()
+            if self.force_render:
+                self.render()
             self.gym.simulate(self.sim)
 
         # to fix!
@@ -294,7 +305,7 @@ class MA_VecTask(Env):
 
         return self.obs_dict, done_env_ids
 
-    def render(self):
+    def render(self, mode="rgb_array"):
         """Draw the frame to the viewer, and check for keyboard events."""
         if self.viewer:
             # check for window closed
@@ -323,6 +334,10 @@ class MA_VecTask(Env):
 
             else:
                 self.gym.poll_viewer_events(self.viewer)
+
+            if self.virtual_display and mode == "rgb_array":
+                img = self.virtual_display.grab()
+                return np.array(img)
 
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:
         """Parse the config dictionary for physics stepping settings.

@@ -43,7 +43,7 @@ class MA_Ant_Battle(MA_VecTask):
         self.ant_body_colors = [gymapi.Vec3(*rgb_arr) for rgb_arr in self.cfg["env"]["color"]]
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
-                         headless=headless)
+                         headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         self.use_central_value = False
         self.obs_idxs = torch.eye(4, dtype=torch.float32, device=self.device)
