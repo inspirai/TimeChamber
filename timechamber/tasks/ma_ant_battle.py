@@ -50,7 +50,7 @@ class MA_Ant_Battle(MA_VecTask):
         if self.viewer is not None:
             for i, env in enumerate(self.envs):
                 self._add_circle_borderline(env, self.borderline_space)
-            cam_pos = gymapi.Vec3(15.0, 0.0, 3.4)
+            cam_pos = gymapi.Vec3(18.0, 0.0, 5.0)
             cam_target = gymapi.Vec3(10.0, 0.0, 0.0)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 

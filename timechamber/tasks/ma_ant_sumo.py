@@ -62,7 +62,7 @@ class MA_Ant_Sumo(MA_VecTask):
         if self.viewer is not None:
             for env in self.envs:
                 self._add_circle_borderline(env)
-            cam_pos = gymapi.Vec3(15.0, 0.0, 3.0)
+            cam_pos = gymapi.Vec3(18.0, 0.0, 5.0)
             cam_target = gymapi.Vec3(10.0, 0.0, 0.0)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
@@ -137,7 +137,7 @@ class MA_Ant_Sumo(MA_VecTask):
                 end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
                 lines.append(begin_point)
                 lines.append(end_point)
-        self.lines = np.array(lines, dtype=np.float32)
+        self.lines = np.array(lines, dtype=np.float32) * self.borderline_space
         self._create_ground_plane()
         print(f'num envs {self.num_envs} env spacing {self.cfg["env"]["envSpacing"]}')
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
