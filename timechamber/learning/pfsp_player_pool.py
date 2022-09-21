@@ -148,7 +148,7 @@ class PFSPPlayerPool:
 
     def inference(self, input_dict, res_dict, processed_obs):
         for i, player in enumerate(self.players):
-            if len(player.env_indices) == 0:
+            if len(player.env_indices[0]) == 0:
                 continue
             input_dict['obs'] = processed_obs[player.env_indices]
             out_dict = player(input_dict)
