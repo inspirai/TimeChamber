@@ -387,14 +387,9 @@ class MA_Ant_Sumo(MA_VecTask):
         self.progress_buf += 1
         self.randomize_buf += 1
 
-        resets = self.reset_buf.reshape(self.num_envs, 1).sum(dim=1)
-        # print(resets)
-        env_ids = (resets == 1).nonzero(as_tuple=False).flatten()
-        if len(env_ids) > 0:
-            self.reset_idx(env_ids)
-
         self.compute_observations()
         self.compute_reward(self.actions)
+        
         self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
 
     def get_number_of_agents(self):

@@ -41,7 +41,6 @@ params:
   device: ${...rl_device}
   config:
     name: ${resolve_default:MA_Ant_1v1,${....experiment}}
-    full_experiment_name: ${.name}
     env_name: rlgpu
     multi_gpu: ${....multi_gpu}
     ppo: True
