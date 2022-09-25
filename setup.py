@@ -30,7 +30,7 @@ INSTALL_REQUIRES = [
 # Installation operation
 setup(
     name="timechamber",
-    author="ZeldaHuang",
+    author="ZeldaHuang, Ziyi Liu",
     version="0.0.1",
     description="A Massively Parallel Large Scale Self-Play Framework",
     keywords=["robotics", "rl"],

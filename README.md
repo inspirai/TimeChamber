@@ -174,7 +174,7 @@ If you use timechamber in your research please use the following citation:
 
 ````
 @misc{InspirAI,
-  author = {Huang Ziming,Wu Yutong,Flood Sung},
+  author = {Huang Ziming, Ziyi Liu, Wu Yutong, Flood Sung},
   title = {TimeChamber: A Massively Parallel Large Scale Self-Play Framework},
   year = {2022},
   publisher = {GitHub},
