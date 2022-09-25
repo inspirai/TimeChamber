@@ -32,6 +32,12 @@ TimeChamber is developed with the following key features:
   discover some interesting
   physical skills like pulling, jumping,etc. **Welcome to contribute your own environments!**
 
+**TODO**
+
+- [ ] Hierarchical Training
+
+- [ ] Population-Based Training and Policy Diversity
+
 ## Installation
 
 ****
