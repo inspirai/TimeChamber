@@ -13,7 +13,7 @@ root_dir = os.path.dirname(os.path.realpath(__file__))
 # Minimum dependencies required prior to installation
 INSTALL_REQUIRES = [
     # RL
-    "gym",
+    "gym==0.24",
     "torch",
     "omegaconf",
     "termcolor",
@@ -24,7 +24,6 @@ INSTALL_REQUIRES = [
     "multielo @ git+https://github.com/djcunningham0/multielo.git@440f7922b90ff87009f8283d6491eb0f704e6624",
     "matplotlib==3.5.2",
     "pytest==7.1.2",
-    "gym==0.24"
 ]
 
 # Installation operation

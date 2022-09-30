@@ -221,10 +221,6 @@ class MA_VecTask(Env):
             Observations, rewards, resets, info
             Observations are dict of observations (currently only one member called 'obs')
         """
-        resets = self.reset_buf.reshape(self.num_envs, 1).sum(dim=1)
-        env_ids = (resets == 1).nonzero(as_tuple=False).flatten()
-        if len(env_ids) > 0:
-            self.reset_idx(env_ids)
 
         # randomize actions
         if self.dr_randomizations.get('actions', None):
