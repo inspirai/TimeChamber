@@ -47,7 +47,6 @@ num_agents: 2
 
 # HRL Arguments
 motion_file: 'tasks/data/motions/reallusion_sword_shield/RL_Avatar_Idle_Ready_Motion.npy'
-llc_checkpoint: 'tasks/data/models/ase_llc_reallusion_sword_shield.pth'
 
 # set to True to use multi-gpu horovod training
 multi_gpu: False
