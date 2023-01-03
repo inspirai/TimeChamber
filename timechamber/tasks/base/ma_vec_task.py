@@ -46,11 +46,8 @@ import sys
 import abc
 from .vec_task import Env
 
-SCREEN_CAPTURE_RESOLUTION = (1027, 768)
-
 
 class MA_VecTask(Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
 
     def __init__(self, config, rl_device, sim_device, graphics_device_id, headless,
                  virtual_screen_capture: bool = False, force_render: bool = False):
@@ -63,13 +60,10 @@ class MA_VecTask(Env):
             headless: Set to False to disable viewer rendering.
         """
         super().__init__(config, rl_device, sim_device, graphics_device_id, headless)
+        
         self.virtual_screen_capture = virtual_screen_capture
-        self.virtual_display = None
-        if self.virtual_screen_capture:
-            from pyvirtualdisplay.smartdisplay import SmartDisplay
-            self.virtual_display = SmartDisplay(size=SCREEN_CAPTURE_RESOLUTION)
-            self.virtual_display.start()
         self.force_render = force_render
+
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
             self.physics_engine = gymapi.SIM_PHYSX
@@ -160,7 +154,6 @@ class MA_VecTask(Env):
             self.num_envs * self.num_agents, device=self.device, dtype=torch.long)
         self.extras = {}
 
-    #
     def set_sim_params_up_axis(self, sim_params: gymapi.SimParams, axis: str) -> int:
         """Set gravity based on up axis and return axis index.
 
@@ -226,9 +219,8 @@ class MA_VecTask(Env):
         if self.dr_randomizations.get('actions', None):
             actions = self.dr_randomizations['actions']['noise_lambda'](actions)
 
-        action_tensor = torch.clamp(actions, -self.clip_actions, self.clip_actions)
         # apply actions
-        self.pre_physics_step(action_tensor)
+        self.pre_physics_step(actions)
 
         # step physics and render each frame
         for i in range(self.control_freq_inv):
@@ -253,12 +245,7 @@ class MA_VecTask(Env):
 
         self.extras["time_outs"] = self.timeout_buf.to(self.rl_device)
 
-        self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
-        # asymmetric actor-critic
-        if self.num_states > 0:
-            self.obs_dict["states"] = self.get_state()
-
-        return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
+        return
 
     def zero_actions(self) -> torch.Tensor:
         """Returns a buffer with zero actions.
@@ -271,23 +258,26 @@ class MA_VecTask(Env):
 
         return actions
 
-    def reset(self) -> torch.Tensor:
+    def reset(self, env_ids=None) -> torch.Tensor:
         """Reset the environment.
-        Returns:
-            Observation dictionary
         """
-        zero_actions = self.zero_actions()
+        if (env_ids is None):
+            # zero_actions = self.zero_actions()
+            # self.step(zero_actions)
+            env_ids = to_torch(np.arange(self.num_envs), device=self.device, dtype=torch.long)
+            self.reset_idx(env_ids)
+            self.compute_observations()
+            self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
+        else:
+            self._reset_envs(env_ids=env_ids)
+        return
 
-        # step the simulator
-        self.step(zero_actions)
-
-        self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
-
-        # asymmetric actor-critic
-        if self.num_states > 0:
-            self.obs_dict["states"] = self.get_state()
-
-        return self.obs_dict
+    def _reset_envs(self, env_ids):
+        if (len(env_ids) > 0):
+            self.reset_idx(env_ids)
+            self.compute_observations()
+            self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
+        return
 
     def reset_done(self):
         """Reset the environment.
@@ -305,7 +295,7 @@ class MA_VecTask(Env):
 
         return self.obs_dict, done_env_ids
 
-    def render(self, mode="rgb_array"):
+    def render(self):
         """Draw the frame to the viewer, and check for keyboard events."""
         if self.viewer:
             # check for window closed
@@ -334,10 +324,6 @@ class MA_VecTask(Env):
 
             else:
                 self.gym.poll_viewer_events(self.viewer)
-
-            if self.virtual_display and mode == "rgb_array":
-                img = self.virtual_display.grab()
-                return np.array(img)
 
     def __parse_sim_params(self, physics_engine: str, config_sim: Dict[str, Any]) -> gymapi.SimParams:
         """Parse the config dictionary for physics stepping settings.

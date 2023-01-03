@@ -8,6 +8,7 @@ import os
 import time
 from .pfsp_player_pool import PFSPPlayerPool, SinglePlayer, PFSPPlayerThreadPool, PFSPPlayerProcessPool, \
     PFSPPlayerVectorizedPool
+from timechamber.utils.utils import load_checkpoint
 from rl_games.algos_torch import a2c_continuous
 from rl_games.common.a2c_common import swap_and_flatten01
 from rl_games.algos_torch import torch_ext
@@ -54,7 +55,13 @@ class SPAgent(a2c_continuous.A2CAgent):
         assert self.num_actors % self.max_his_player_num == 0
 
     def _build_player_pool(self, params):
-        if self.player_pool_type == 'vectorized':
+        if self.player_pool_type == 'multi_thread':
+            return PFSPPlayerProcessPool(max_length=self.max_his_player_num,
+                                         device=self.device)
+        elif self.player_pool_type == 'multi_process':
+            return PFSPPlayerThreadPool(max_length=self.max_his_player_num,
+                                        device=self.device)
+        elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponent_agents
             vector_model_config['population_size'] = self.max_his_player_num
@@ -67,12 +74,14 @@ class SPAgent(a2c_continuous.A2CAgent):
     def play_steps(self):
         update_list = self.update_list
         step_time = 0.0
+        env_done_indices = torch.tensor([], device=self.device, dtype=torch.long)
+        
         for n in range(self.horizon_length):
+            self.obs = self.env_reset(env_done_indices)
             if self.use_action_masks:
                 masks = self.vec_env.get_action_masks()
                 res_dict = self.get_masked_action_values(self.obs, masks)
             else:
-
                 res_dict_op = self.get_action_values(self.obs, is_op=True)
 
                 res_dict = self.get_action_values(self.obs)
@@ -102,7 +111,8 @@ class SPAgent(a2c_continuous.A2CAgent):
             self.current_lengths += 1
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = self.dones.view(self.num_actors, self.num_agents).all(dim=1).nonzero(as_tuple=False)
-
+            # print(f"env done indices: {env_done_indices}")
+            # print(f"self.dones {self.dones}")
             self.game_rewards.update(self.current_rewards[env_done_indices])
             self.game_lengths.update(self.current_lengths[env_done_indices])
             self.algo_observer.process_infos(infos, env_done_indices)
@@ -114,6 +124,8 @@ class SPAgent(a2c_continuous.A2CAgent):
 
             self.player_pool.update_player_metric(infos=infos)
             self.resample_op(all_done_indices.flatten())
+
+            env_done_indices = env_done_indices[:, 0]
 
         last_values = self.get_values(self.obs)
 
@@ -145,8 +157,8 @@ class SPAgent(a2c_continuous.A2CAgent):
             return self.obs_to_tensors(obs), torch.from_numpy(rewards).to(self.ppo_device).float(), torch.from_numpy(
                 dones).to(self.ppo_device), infos
 
-    def env_reset(self):
-        obs = self.vec_env.reset()
+    def env_reset(self, env_ids=None):
+        obs = self.vec_env.reset(env_ids)
         obs = self.obs_to_tensors(obs)
         obs['obs_op'] = obs['obs'][self.num_actors:]
         obs['obs'] = obs['obs'][:self.num_actors]
@@ -321,7 +333,7 @@ class SPAgent(a2c_continuous.A2CAgent):
         print("resample done")
 
     def restore_op(self, fn):
-        checkpoint = torch_ext.load_checkpoint(fn)
+        checkpoint = load_checkpoint(fn, device=self.device)
         self.init_op_model.load_state_dict(checkpoint['model'])
         if self.normalize_input and 'running_mean_std' in checkpoint:
             self.init_op_model.running_mean_std.load_state_dict(checkpoint['running_mean_std'])

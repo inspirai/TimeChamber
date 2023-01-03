@@ -57,12 +57,13 @@ class MA_Ant_Sumo(MA_VecTask):
 
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
-                         headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
+                         headless=headless, virtual_screen_capture=virtual_screen_capture,
+                         force_render=force_render)
 
         if self.viewer is not None:
             for env in self.envs:
                 self._add_circle_borderline(env)
-            cam_pos = gymapi.Vec3(18.0, 0.0, 5.0)
+            cam_pos = gymapi.Vec3(15.0, 0.0, 3.0)
             cam_target = gymapi.Vec3(10.0, 0.0, 0.0)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
@@ -85,7 +86,7 @@ class MA_Ant_Sumo(MA_VecTask):
 
         # create some wrapper tensors for different slices
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        print(f'dof:{self.dof_state.shape}')
+        print(f"dof state shape: {self.dof_state.shape}")
         self.dof_pos = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_dof, 0]
         self.dof_pos_op = self.dof_state.view(self.num_envs, -1, 2)[:, self.num_dof:2 * self.num_dof, 0]
         self.dof_vel = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_dof, 1]
@@ -129,15 +130,7 @@ class MA_Ant_Sumo(MA_VecTask):
     def create_sim(self):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, 'z')
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
-        lines = []
-        borderline_height = 0.01
-        for height in range(20):
-            for angle in range(360):
-                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height * height]
-                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
-                lines.append(begin_point)
-                lines.append(end_point)
-        self.lines = np.array(lines, dtype=np.float32) * self.borderline_space
+
         self._create_ground_plane()
         print(f'num envs {self.num_envs} env spacing {self.cfg["env"]["envSpacing"]}')
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
@@ -147,8 +140,17 @@ class MA_Ant_Sumo(MA_VecTask):
             self.apply_randomizations(self.randomization_params)
 
     def _add_circle_borderline(self, env):
-        colors = np.array([[1, 0, 0]] * int(len(self.lines) / 2), dtype=np.float32)
-        self.gym.add_lines(self.viewer, env, int(len(self.lines) / 2), self.lines, colors)
+        lines = []
+        borderline_height = 0.01
+        for height in range(20):
+            for angle in range(360):
+                begin_point = [np.cos(np.radians(angle)), np.sin(np.radians(angle)), borderline_height * height]
+                end_point = [np.cos(np.radians(angle + 1)), np.sin(np.radians(angle + 1)), borderline_height * height]
+                lines.append(begin_point)
+                lines.append(end_point)
+        lines = np.array(lines, dtype=np.float32) * self.borderline_space
+        colors = np.array([[1, 0, 0]] * int(len(lines) / 2), dtype=np.float32)
+        self.gym.add_lines(self.viewer, env, int(len(lines) / 2), lines, colors)
 
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
@@ -259,8 +261,8 @@ class MA_Ant_Sumo(MA_VecTask):
 
         self.dof_limits_lower = to_torch(self.dof_limits_lower, device=self.device)
         self.dof_limits_upper = to_torch(self.dof_limits_upper, device=self.device)
-        self.actor_indices = to_torch(self.actor_indices, device=self.device)
-        self.actor_indices_op = to_torch(self.actor_indices_op, device=self.device)
+        self.actor_indices = to_torch(self.actor_indices, dtype=torch.long, device=self.device)
+        self.actor_indices_op = to_torch(self.actor_indices_op, dtype=torch.long, device=self.device)
 
         for i in range(len(extremity_names)):
             self.extremities_index[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ant_handles[0],
@@ -387,14 +389,8 @@ class MA_Ant_Sumo(MA_VecTask):
         self.progress_buf += 1
         self.randomize_buf += 1
 
-        resets = self.reset_buf.reshape(self.num_envs, 1).sum(dim=1)
-        env_ids = (resets == 1).nonzero(as_tuple=False).flatten()
-        if len(env_ids) > 0:
-            self.reset_idx(env_ids)
-
         self.compute_observations()
         self.compute_reward(self.actions)
-        
         self.pos_before = self.obs_buf[:self.num_envs, :2].clone()
 
     def get_number_of_agents(self):

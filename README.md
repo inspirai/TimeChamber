@@ -25,18 +25,13 @@ TimeChamber is developed with the following key features:
 <img src="assets/images/algorithm.jpg" align="center" width="600"/>
 </div> 
 
-- **Competitive Multi-Agent Tasks**: Inspired by [OpenAI RoboSumo](https://github.com/openai/robosumo), we introduce two
+- **Competitive Multi-Agent Tasks**: Inspired by [OpenAI RoboSumo](https://github.com/openai/robosumo) and [ASE](https://github.com/nv-tlabs/ASE), we introduce three
   competitive multi-agent tasks(e.g.,Ant Sumo,Ant
-  Battle) as examples.
+  Battle and Humanoid Strike) as examples.
   The efficiency of our self-play framework has been tested on these tasks. After days of training,our agent can
   discover some interesting
   physical skills like pulling, jumping,etc. **Welcome to contribute your own environments!**
 
-**TODO**
-
-- [ ] Hierarchical Training
-
-- [ ] Population-Based Training and Policy Diversity
 
 ## Installation
 
@@ -61,6 +56,17 @@ Source code for tasks can be found in  `timechamber/tasks`,The detailed settings
 in [here](./docs/environments.md).
 More interesting tasks will come soon.
 
+#### Humanoid Strike
+
+Humanoid Strike is a 3D environment with two simulated humanoid physics characters. Each character is equipped with a sword and shield with 37 degrees-of-freedom.
+The game will be restarted if one agent goes outside the arena. We measure how much the player damaged the opponent and how much the player was damaged by the opponent in the terminated step to determine the winner.
+
+<div align=center>
+<img src="assets/images/humanoid_strike.gif" align="center" width="600"/>
+</div> 
+
+
+
 #### Ant Sumo
 
 Ant Sumo is a 3D environment with simulated physics that allows pairs of ant agents to compete against each other.
@@ -83,13 +89,18 @@ each other. The battle ring radius will shrink, the agent going out of the ring 
 To train your policy for tasks, for example:
 
 ```bash
+# run self-play training for Humanoid Strike task
+python train.py task=MA_Humanoid_Strike headless=True
+```
+
+```bash
 # run self-play training for Ant Sumo task
-python train.py task=MA_Ant_Sumo headless=True
+python train.py task=MA_Ant_Sumo train=MA_Ant_SumoPPO headless=True
 ```
 
 ```bash
 # run self-play training for Ant Battle task
-python train.py task=MA_Ant_Battle headless=True
+python train.py task=MA_Ant_Battle train=MA_Ant_BattlePPO headless=True
 ```
 
 Key arguments to the training script
@@ -114,7 +125,12 @@ To evaluate your policies, for example:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True headless=True checkpoint='models/ant_sumo/policy.pth'
+python train.py task=MA_Ant_Sumo train=MA_Ant_SumoPPO test=True num_envs=4 minibatch_size=32 headless=False checkpoint='models/ant_sumo/policy.pth'
+```
+
+```bash
+# run testing for Humanoid Strike policy
+python train.py task=MA_Humanoid_Strike train=MA_Humanoid_StrikeHRL test=True num_envs=4 minibatch_size=32 headless=False checkpoint='models/Humanoid_Strike/policy.pth' op_checkpoint='models/Humanoid_Strike/policy_op.pth'
 ```
 
 You can set the opponent agent policy using `op_checkpoint`. If it's empty, the opponent agent will use the same policy
@@ -125,7 +141,7 @@ other in parallel:
 
 ```bash
 # run testing for Ant Sumo policy
-python train.py task=MA_Ant_Sumo test=True headless=True checkpoint='models/ant_sumo' player_pool_type=vectorized
+python train.py task=MA_Ant_Sumo train=MA_Ant_SumoPPO test=True headless=True checkpoint='models/ant_sumo' player_pool_type=vectorized
 ```
 
 There are some specific arguments for self-play evaluation, you can change them in `timechamber/tasks/train/*.yaml`:

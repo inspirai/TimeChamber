@@ -29,6 +29,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import datetime
+from statistics import mode
 import isaacgym
 import os
 import hydra
@@ -38,8 +39,23 @@ from hydra.utils import to_absolute_path
 import gym
 
 from timechamber.utils.reformat import omegaconf_to_dict, print_dict
-
 from timechamber.utils.utils import set_np_formatting, set_seed
+from timechamber.utils.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, get_rlgames_env_creator
+from rl_games.common import env_configurations, vecenv
+from rl_games.torch_runner import Runner
+from rl_games.algos_torch import model_builder
+from timechamber.ase import ase_agent
+from timechamber.ase import ase_models
+from timechamber.ase import ase_network_builder
+from timechamber.ase import hrl_models
+from timechamber.ase import hrl_network_builder
+from timechamber.learning import ppo_sp_agent
+from timechamber.learning import hrl_sp_agent
+from timechamber.learning import ppo_sp_player
+from timechamber.learning import hrl_sp_player
+from timechamber.learning import vectorized_models
+from timechamber.learning import vectorized_network_builder
+import timechamber
 
 
 ## OmegaConf & Hydra Config
@@ -47,15 +63,6 @@ from timechamber.utils.utils import set_np_formatting, set_seed
 # Resolvers used in hydra configs (see https://omegaconf.readthedocs.io/en/2.1_branch/usage.html#resolvers)
 @hydra.main(config_name="config", config_path="./cfg")
 def launch_rlg_hydra(cfg: DictConfig):
-    from timechamber.utils.rlgames_utils import RLGPUEnv, RLGPUAlgoObserver, get_rlgames_env_creator
-    from rl_games.common import env_configurations, vecenv
-    from rl_games.torch_runner import Runner
-    from rl_games.algos_torch import model_builder
-    from timechamber.learning import ppo_sp_agent
-    from timechamber.learning import ppo_sp_player
-    from timechamber.learning import vectorized_models
-    from timechamber.learning import vectorized_network_builder
-    import timechamber
 
     time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_name = f"{cfg.wandb_name}_{time_str}"
@@ -102,6 +109,7 @@ def launch_rlg_hydra(cfg: DictConfig):
             cfg.sim_device,
             cfg.rl_device,
             cfg.graphics_device_id,
+            cfg.device_type,
             cfg.headless,
             cfg.multi_gpu,
             cfg.capture_video,
@@ -122,6 +130,7 @@ def launch_rlg_hydra(cfg: DictConfig):
     # register the rl-games adapter to use inside the runner
     vecenv.register('RLGPU',
                     lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+
     env_configurations.register('rlgpu', {
         'vecenv_type': 'RLGPU',
         'env_creator': create_env_thunk,
@@ -131,14 +140,23 @@ def launch_rlg_hydra(cfg: DictConfig):
     def build_runner(algo_observer):
         runner = Runner(algo_observer)
         runner.algo_factory.register_builder('self_play_continuous', lambda **kwargs: ppo_sp_agent.SPAgent(**kwargs))
+        runner.algo_factory.register_builder('self_play_hrl', lambda **kwargs: hrl_sp_agent.HRLSPAgent(**kwargs))
+        runner.algo_factory.register_builder('ase', lambda **kwargs: ase_agent.ASEAgent(**kwargs))
 
         runner.player_factory.register_builder('self_play_continuous',
                                                lambda **kwargs: ppo_sp_player.SPPlayer(**kwargs))
+        runner.player_factory.register_builder('self_play_hrl',
+                                               lambda **kwargs: hrl_sp_player.HRLSPPlayer(**kwargs))
+        # runner.
+        model_builder.register_model('hrl', lambda network, **kwargs: hrl_models.ModelHRLContinuous(network))
+        model_builder.register_model('ase', lambda network, **kwargs: ase_models.ModelASEContinuous(network))
         model_builder.register_model('vectorized_a2c',
                                      lambda network, **kwargs: vectorized_models.ModelVectorizedA2C(network))
         model_builder.register_network('vectorized_a2c',
                                        lambda **kwargs: vectorized_network_builder.VectorizedA2CBuilder())
-
+        model_builder.register_network('ase', lambda **kwargs: ase_network_builder.ASEBuilder())
+        model_builder.register_network('hrl', lambda **kwargs: hrl_network_builder.HRLBuilder())
+        
         return runner
 
     rlg_config_dict = omegaconf_to_dict(cfg.train)

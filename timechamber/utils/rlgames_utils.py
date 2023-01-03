@@ -33,19 +33,26 @@ from timechamber.utils.utils import set_seed
 import torch
 import numpy as np
 from typing import Callable
-
+from isaacgym import gymapi
+from isaacgym import gymutil
+from omegaconf import DictConfig
 from timechamber.tasks import isaacgym_task_map
+from timechamber.utils.vec_task_wrappers import VecTaskPythonWrapper
+from timechamber.utils.config import parse_sim_params
 
+SIM_TIMESTEP = 1.0 / 60.0
 
 def get_rlgames_env_creator(
         # used to create the vec task
         seed: int,
+        cfg: DictConfig,
         task_config: dict,
         task_name: str,
         sim_device: str,
         rl_device: str,
         graphics_device_id: int,
         headless: bool,
+        device_type: str = "cuda",
         # Used to handle multi-gpu case
         multi_gpu: bool = False,
         post_create_hook: Callable = None,
@@ -75,16 +82,36 @@ def get_rlgames_env_creator(
         """
 
         # create native task and pass custom config
-        env = isaacgym_task_map[task_name](
-            cfg=task_config,
-            rl_device=rl_device,
-            sim_device=sim_device,
-            graphics_device_id=graphics_device_id,
-            headless=headless,
-            virtual_screen_capture=virtual_screen_capture,
-            force_render=force_render,
-        )
-
+        if task_name == "MA_Humanoid_Strike":
+            sim_params = parse_sim_params(cfg, task_config)
+            if cfg.physics_engine == "physx":
+                physics_engine = gymapi.SIM_PHYSX
+            elif cfg.physics_engine == "flex":
+                physics_engine = gymapi.SIM_FLEX
+            task = isaacgym_task_map[task_name](
+                cfg=task_config,
+                sim_params=sim_params,
+                physics_engine=physics_engine,
+                device_type=device_type,
+                device_id=graphics_device_id,
+                headless=headless
+            )
+            env = VecTaskPythonWrapper(task, rl_device,
+                                       task_config.get("clip_observations", np.inf),
+                                       task_config.get("clip_actions", 1.0),
+                                       AMP=True)
+        else:
+            task = isaacgym_task_map[task_name](
+                cfg=task_config,
+                rl_device=rl_device,
+                sim_device=sim_device,
+                graphics_device_id=graphics_device_id,
+                headless=headless,
+                virtual_screen_capture=virtual_screen_capture,
+                force_render=force_render,
+            )
+            env = VecTaskPythonWrapper(task, rl_device, task_config.get("clip_observations", np.inf), task_config.get("clip_actions", 1.0))
+        
         if post_create_hook is not None:
             post_create_hook()
 
@@ -151,15 +178,28 @@ class RLGPUAlgoObserver(AlgoObserver):
 class RLGPUEnv(vecenv.IVecEnv):
     def __init__(self, config_name, num_actors, **kwargs):
         self.env = env_configurations.configurations[config_name]['env_creator'](**kwargs)
+        self.use_global_obs = (self.env.num_states > 0)
 
-    def step(self, actions):
-        return  self.env.step(actions)
+        self.full_state = {}
+        self.full_state["obs"] = self.reset()
+        if self.use_global_obs:
+            self.full_state["states"] = self.env.get_state()
+        return
 
-    def reset(self):
-        return self.env.reset()
-    
-    def reset_done(self):
-        return self.env.reset_done()
+    def step(self, action):
+        next_obs, reward, is_done, info = self.env.step(action)
+
+        # todo: improve, return only dictinary
+        self.full_state["obs"] = next_obs
+        if self.use_global_obs:
+            self.full_state["states"] = self.env.get_state()
+        return self.full_state, reward, is_done, info
+
+    def reset(self, env_ids=None):
+        self.full_state["obs"] = self.env.reset(env_ids)
+        if self.use_global_obs:
+            self.full_state["states"] = self.env.get_state()
+        return self.full_state
 
     def get_number_of_agents(self):
         return self.env.get_number_of_agents()
@@ -168,10 +208,9 @@ class RLGPUEnv(vecenv.IVecEnv):
         info = {}
         info['action_space'] = self.env.action_space
         info['observation_space'] = self.env.observation_space
-        if hasattr(self.env, "amp_observation_space"):
-            info['amp_observation_space'] = self.env.amp_observation_space
+        info['amp_observation_space'] = self.env.amp_observation_space
 
-        if self.env.num_states > 0:
+        if self.use_global_obs:
             info['state_space'] = self.env.state_space
             print(info['action_space'], info['observation_space'], info['state_space'])
         else:

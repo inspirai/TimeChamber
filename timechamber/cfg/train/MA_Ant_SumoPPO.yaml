@@ -35,7 +35,7 @@ params:
   num_agents: ${...num_agents}
 
   update_win_rate: 0.7
-  player_pool_length: 4
+  player_pool_length: 2
   games_to_check: 400
   max_update_steps: 5000
   device: ${...rl_device}
@@ -59,9 +59,9 @@ params:
     schedule_type: standard
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: ${resolve_default:2000,${....max_iterations}}
+    max_epochs: ${resolve_default:100000,${....max_iterations}}
     save_best_after: 200
-    save_frequency: 1000
+    save_frequency: 500
     grad_norm: 1.0
     entropy_coef: 0.0
     truncate_grads: True

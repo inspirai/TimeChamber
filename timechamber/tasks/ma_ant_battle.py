@@ -43,14 +43,14 @@ class MA_Ant_Battle(MA_VecTask):
         self.ant_body_colors = [gymapi.Vec3(*rgb_arr) for rgb_arr in self.cfg["env"]["color"]]
         super().__init__(config=self.cfg, sim_device=sim_device, rl_device=rl_device,
                          graphics_device_id=graphics_device_id,
-                         headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
+                         headless=headless)
 
         self.use_central_value = False
         self.obs_idxs = torch.eye(4, dtype=torch.float32, device=self.device)
         if self.viewer is not None:
             for i, env in enumerate(self.envs):
                 self._add_circle_borderline(env, self.borderline_space)
-            cam_pos = gymapi.Vec3(18.0, 0.0, 5.0)
+            cam_pos = gymapi.Vec3(15.0, 0.0, 3.4)
             cam_target = gymapi.Vec3(10.0, 0.0, 0.0)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 

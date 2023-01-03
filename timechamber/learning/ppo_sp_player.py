@@ -60,19 +60,17 @@ class SPPlayer(BasePlayer):
 
     def restore(self, load_dir):
         if os.path.isdir(load_dir):
+            self.player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             print('dir:', load_dir)
             sorted_players = []
-            for idx, policy_checkpoint in enumerate(os.listdir(load_dir)):
-                if not str(policy_checkpoint).endswith('.pth'):
-                    continue
-                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_checkpoint))
+            for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
                 self.policy_timestep.append(model_timestep)
-                model = self.load_model(load_dir + '/' + str(policy_checkpoint))
+                model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
                 new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 sorted_players.append(new_player)
             sorted_players.sort(key=lambda player: player.player_idx)
-            self.player_pool = self._build_player_pool(params=self.params, player_num=len(sorted_players))
             for idx, player in enumerate(sorted_players):
                 player.player_idx = idx
                 self.player_pool.add_player(player)
@@ -90,18 +88,16 @@ class SPPlayer(BasePlayer):
 
     def restore_op(self, load_dir):
         if os.path.isdir(load_dir):
+            self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(os.listdir(load_dir)))
             sorted_players = []
-            for idx, policy_checkpoint in enumerate(os.listdir(load_dir)):
-                if not str(policy_checkpoint).endswith('.pth'):
-                    continue
-                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_checkpoint))
+            for idx, policy_check_checkpoint in enumerate(os.listdir(load_dir)):
+                model_timestep = os.path.getmtime(load_dir + '/' + str(policy_check_checkpoint))
                 self.policy_op_timestep.append(model_timestep)
-                model = self.load_model(load_dir + '/' + str(policy_checkpoint))
+                model = self.load_model(load_dir + '/' + str(policy_check_checkpoint))
                 new_player = SinglePlayer(player_idx=model_timestep, model=model, device=self.device,
                                           rating=self.init_elo, obs_batch_len=self.num_actors * self.num_opponents)
                 sorted_players.append(new_player)
             sorted_players.sort(key=lambda player: player.player_idx)
-            self.op_player_pool = self._build_player_pool(params=self.params, player_num=len(sorted_players))
             for idx, player in enumerate(sorted_players):
                 player.player_idx = idx
                 self.op_player_pool.add_player(player)
@@ -131,7 +127,14 @@ class SPPlayer(BasePlayer):
             player.reset_envs()
 
     def _build_player_pool(self, params, player_num):
-        if self.player_pool_type == 'vectorized':
+
+        if self.player_pool_type == 'multi_thread':
+            return PFSPPlayerProcessPool(max_length=player_num,
+                                         device=self.device)
+        elif self.player_pool_type == 'multi_process':
+            return PFSPPlayerThreadPool(max_length=player_num,
+                                        device=self.device)
+        elif self.player_pool_type == 'vectorized':
             vector_model_config = self.base_model_config
             vector_model_config['num_envs'] = self.num_actors * self.num_opponents
             vector_model_config['population_size'] = player_num
@@ -197,8 +200,9 @@ class SPPlayer(BasePlayer):
             steps = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
 
             print_game_res = False
-
+            done_indices = torch.tensor([], device=self.device, dtype=torch.long)
             for n in range(self.max_steps):
+                obses = self.env_reset(self.env, done_indices)
                 if has_masks:
                     masks = self.env.get_action_mask()
                     action = self.get_masked_action(
@@ -251,7 +255,9 @@ class SPPlayer(BasePlayer):
 
                     sum_game_res += game_res
                     if batch_size // self.num_agents == 1 or games_played >= n_games:
+                        print(f"games_player: {games_played}")
                         break
+                done_indices = done_indices[:, 0]
 
         if self.record_elo:
             self._plot_elo_curve()
@@ -332,27 +338,29 @@ class SPPlayer(BasePlayer):
         if len(self.policy_op_timestep):
             self.policy_op_timestep[0] = 0
 
-    def env_reset(self, env):
-        obs = env.reset()
-        obs['obs_op'] = obs['obs'][self.num_actors:]
-        obs['obs'] = obs['obs'][:self.num_actors]
-        return obs
+    def env_reset(self, env, done_indices=None):
+        obs = env.reset(done_indices)
+        obs_dict = {}
+        obs_dict['obs_op'] = obs[self.num_actors:]
+        obs_dict['obs'] = obs[:self.num_actors]
+        return obs_dict
 
     def env_step(self, env, actions):
         obs, rewards, dones, infos = env.step(actions)
-        obs['obs_op'] = obs['obs'][self.num_actors:]
-        obs['obs'] = obs['obs'][:self.num_actors]
         if hasattr(obs, 'dtype') and obs.dtype == np.float64:
             obs = np.float32(obs)
+        obs_dict = {}
+        obs_dict['obs_op'] = obs[self.num_actors:]
+        obs_dict['obs'] = obs[:self.num_actors]
         if self.value_size > 1:
             rewards = rewards[0]
         if self.is_tensor_obses:
-            return self.obs_to_torch(obs), rewards.cpu(), dones.cpu(), infos
+            return self.obs_to_torch(obs_dict), rewards.cpu(), dones.cpu(), infos
         else:
             if np.isscalar(dones):
                 rewards = np.expand_dims(np.asarray(rewards), 0)
                 dones = np.expand_dims(np.asarray(dones), 0)
-            return obs, rewards, dones, infos
+            return obs_dict, rewards, dones, infos
 
     def create_model(self):
         model = self.network.build(self.base_model_config)

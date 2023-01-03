@@ -18,12 +18,13 @@ def make(
     sim_device: str,
     rl_device: str,
     graphics_device_id: int = -1,
+    device_type: str = "cuda",
     headless: bool = False,
     multi_gpu: bool = False,
     virtual_screen_capture: bool = False,
     force_render: bool = True,
     cfg: DictConfig = None
-): 
+):
     from timechamber.utils.rlgames_utils import get_rlgames_env_creator
     # create hydra config if no config passed in
     if cfg is None:
@@ -34,20 +35,26 @@ def make(
 
         with initialize(config_path="./cfg"):
             cfg = compose(config_name="config", overrides=[f"task={task}"])
-            cfg_dict = omegaconf_to_dict(cfg.task)
-            cfg_dict['env']['numEnvs'] = num_envs
+            task_dict = omegaconf_to_dict(cfg.task)
+            task_dict['env']['numEnvs'] = num_envs
     # reuse existing config
     else:
-        cfg_dict = omegaconf_to_dict(cfg.task)
-
+        task_dict = omegaconf_to_dict(cfg.task)
+    task_dict['seed'] = cfg.seed
+    task_dict['rl_device'] = rl_device
+    if cfg.motion_file:
+        task_dict['env']['motion_file'] = cfg.motion_file
+    
     create_rlgpu_env = get_rlgames_env_creator(
         seed=seed,
-        task_config=cfg_dict,
-        task_name=cfg_dict["name"],
+        cfg=cfg,
+        task_config=task_dict,
+        task_name=task_dict["name"],
         sim_device=sim_device,
         rl_device=rl_device,
         graphics_device_id=graphics_device_id,
         headless=headless,
+        device_type=device_type,
         multi_gpu=multi_gpu,
         virtual_screen_capture=virtual_screen_capture,
         force_render=force_render,

@@ -22,11 +22,14 @@ minibatch_size: 32768
 physics_engine: 'physx'
 # whether to use cpu or gpu pipeline
 pipeline: 'gpu'
+use_gpu: True
+use_gpu_pipeline: True
 # device for running physics simulation
 sim_device: 'cuda:0'
 # device to run RL
 rl_device: 'cuda:0'
 graphics_device_id: 0
+device_type: cuda
 
 ## PhysX arguments
 num_threads: 4 # Number of worker threads per scene used by PhysX - for CPU PhysX only.
@@ -41,6 +44,11 @@ checkpoint: ''
 op_checkpoint: ''
 player_pool_type: ''
 num_agents: 2
+
+# HRL Arguments
+motion_file: 'tasks/data/motions/reallusion_sword_shield/RL_Avatar_Idle_Ready_Motion.npy'
+llc_checkpoint: 'tasks/data/models/ase_llc_reallusion_sword_shield.pth'
+
 # set to True to use multi-gpu horovod training
 multi_gpu: False
 
@@ -55,12 +63,12 @@ capture_video_len: 100
 force_render: True
 
 # disables rendering
-headless: False
+headless: True
 
 # set default task and default training config based on task
 defaults:
-  - task: Ant
-  - train: ${task}PPO
+  - task: MA_Humanoid_Strike
+  - train: ${task}HRL
   - hydra/job_logging: disabled
 
 # set the directory where the output files get saved
