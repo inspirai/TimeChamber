@@ -90,4 +90,4 @@ params:
 
     llc_steps: 5
     llc_config: cfg/train/base/ase_humanoid_hrl.yaml
-    llc_checkpoint: models/Humanoid_Strike/ase_llc_reallusion_sword_shield.pth
+    llc_checkpoint: tasks/data/models/ase_llc_reallusion_sword_shield.pth
